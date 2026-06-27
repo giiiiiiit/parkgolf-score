@@ -270,6 +270,99 @@ body {
   transform: translateX(-50%) translateY(0);
 }
 
+/* ── 점수 목록 카드 ── */
+.score-list-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px 14px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+.score-list-card:active { transform: scale(0.98); }
+
+.slc-name { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
+.slc-score { font-size: 0.85rem; color: var(--text-sub); }
+.pending-label { color: var(--gray-mid); font-style: italic; }
+
+.slc-badge {
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+  flex-shrink: 0;
+}
+.badge-done { background: #e8f5e9; color: var(--green-dark); }
+.badge-pending { background: #fff3e0; color: #e65100; }
+
+/* ── 점수 입력 폼 ── */
+.score-grid { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; }
+
+.score-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--gray-light);
+}
+.score-row:last-child { border-bottom: none; }
+
+.course-label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.course-label small { font-weight: 400; font-size: 0.8rem; color: var(--text-sub); margin-left: 4px; }
+
+.score-input {
+  width: 90px;
+  padding: 12px 10px;
+  border: 2px solid var(--gray);
+  border-radius: 10px;
+  font-size: 1.3rem;
+  font-weight: 700;
+  text-align: center;
+  color: var(--green-dark);
+  -webkit-appearance: none;
+  -moz-appearance: textfield;
+}
+.score-input:focus { outline: none; border-color: var(--green); }
+.score-input::-webkit-inner-spin-button,
+.score-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+.score-total-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 4px 4px;
+  border-top: 2px solid var(--gray);
+  margin-top: 4px;
+}
+.score-total-label { font-size: 1rem; font-weight: 700; flex: 1; }
+.score-total-val { font-size: 1.6rem; font-weight: 800; color: var(--green-dark); }
+.par-diff {
+  font-size: 1rem;
+  font-weight: 700;
+  min-width: 40px;
+}
+.par-diff.over { color: #c62828; }
+.par-diff.under { color: var(--green); }
+
+/* ── 경고 박스 ── */
+.warn-box {
+  background: #fff3e0;
+  border-left: 4px solid #ff9800;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 0.9rem;
+  color: #e65100;
+  margin-bottom: 14px;
+}
+
 /* ── 반응형 ── */
 @media (min-width: 520px) {
   .app-header { padding: 18px 24px; }

@@ -91,6 +91,68 @@
     </div>
   </div>
 
+  <!-- ── 화면 4: 점수 목록 ── -->
+  <div id="screen-score-list" class="screen">
+    <div class="screen-body">
+      <div class="section-header">
+        <button id="btn-scorelist-back" class="btn-back">← 명단</button>
+        <div>
+          <div class="section-title" id="scorelist-title"></div>
+          <div class="section-sub" id="scorelist-date"></div>
+        </div>
+      </div>
+      <div id="score-list-items" class="card-list"></div>
+    </div>
+  </div>
+
+  <!-- ── 화면 5: 점수 입력 ── -->
+  <div id="screen-score-entry" class="screen">
+    <div class="screen-body">
+      <div class="section-header">
+        <button id="btn-entry-back" class="btn-back">← 목록</button>
+        <div class="section-title" id="entry-name"></div>
+      </div>
+
+      <div class="card">
+        <div class="score-grid">
+          <div class="score-row">
+            <span class="course-label">A 코스 <small>PAR 33</small></span>
+            <input id="score-A" class="score-input" type="number" inputmode="numeric"
+              min="1" max="99" placeholder="–">
+          </div>
+          <div class="score-row">
+            <span class="course-label">B 코스 <small>PAR 33</small></span>
+            <input id="score-B" class="score-input" type="number" inputmode="numeric"
+              min="1" max="99" placeholder="–">
+          </div>
+          <div class="score-row">
+            <span class="course-label">C 코스 <small>PAR 33</small></span>
+            <input id="score-C" class="score-input" type="number" inputmode="numeric"
+              min="1" max="99" placeholder="–">
+          </div>
+          <div class="score-row">
+            <span class="course-label">D 코스 <small>PAR 33</small></span>
+            <input id="score-D" class="score-input" type="number" inputmode="numeric"
+              min="1" max="99" placeholder="–">
+          </div>
+        </div>
+
+        <div class="score-total-row">
+          <span class="score-total-label">합계</span>
+          <span id="score-total-display" class="score-total-val">–</span>
+          <span id="score-par-diff" class="par-diff"></span>
+        </div>
+      </div>
+
+      <div id="score-mismatch-warn" class="warn-box" style="display:none;">
+        ⚠️ 수기 합계와 다릅니다. A+B+C+D 값으로 저장됩니다.
+      </div>
+
+      <button id="btn-save-score" class="btn btn-primary btn-lg">저장</button>
+      <button id="btn-clear-score" class="btn btn-secondary btn-lg">입력 초기화</button>
+    </div>
+  </div>
+
   <!-- ── 확인 모달 ── -->
   <div id="modal-confirm" class="modal-overlay">
     <div class="modal-box">

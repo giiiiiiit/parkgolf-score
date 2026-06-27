@@ -61,6 +61,7 @@ export const DB = {
   },
   score: {
     add: data => tx('scores', 'readwrite', s => s.add(data)),
+    get: id => tx('scores', 'readonly', s => s.get(id)),
     getByTournament: tournamentId => openDB().then(db => new Promise((resolve, reject) => {
       const t = db.transaction('scores', 'readonly');
       const idx = t.objectStore('scores').index('tournamentId');
