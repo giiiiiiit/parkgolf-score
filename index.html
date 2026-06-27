@@ -7,84 +7,104 @@
   <title>파크골프 스코어 집계</title>
   <meta name="description" content="파크골프 대회 스코어를 사진으로 집계하는 앱">
 
-  <!-- PWA 기본 -->
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#2d7a3a">
 
-  <!-- iOS Safari PWA -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="파크골프">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
-
-  <!-- 일반 파비콘 -->
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
 
   <link rel="stylesheet" href="./css/style.css">
 </head>
 <body>
 
+  <!-- ── 공통 헤더 ── -->
   <header class="app-header">
     <h1>⛳ 파크골프 스코어 집계</h1>
-    <p class="subtitle">수기 스코어 카드 → 자동 순위 집계</p>
   </header>
 
-  <main class="main-content">
-
-    <!-- 메인 메뉴 (준비 중) -->
-    <div class="card">
-      <div class="coming-soon">
-        <span class="emoji">🏌️</span>
-        <p>대회 관리, 명단 등록, 사진 업로드,<br>순위 집계 기능이 곧 추가됩니다.</p>
+  <!-- ── 화면 1: 홈 (대회 목록) ── -->
+  <div id="screen-home" class="screen active">
+    <div class="screen-body">
+      <div class="section-header">
+        <span class="section-title">대회 목록</span>
       </div>
-      <button class="btn btn-primary" disabled style="opacity:0.4; margin-top:20px;">
-        새 대회 시작
-      </button>
-      <button class="btn btn-secondary" disabled style="opacity:0.4;">
-        지난 대회 보기
+      <div id="tournament-list" class="card-list"></div>
+      <button id="btn-new-tournament" class="btn btn-primary btn-lg">
+        + 새 대회 만들기
       </button>
     </div>
+  </div>
 
-    <!-- 설치 안내 -->
-    <div class="card install-guide">
-      <div class="card-title">
-        <span>📲</span> 앱으로 설치하기
+  <!-- ── 화면 2: 새 대회 만들기 ── -->
+  <div id="screen-new-tournament" class="screen">
+    <div class="screen-body">
+      <div class="section-header">
+        <span class="section-title">새 대회 만들기</span>
       </div>
-
-      <!-- iOS 안내 -->
-      <div id="ios-guide" style="display:none;">
-        <span class="install-badge">아이폰 · 사파리</span>
-        <ol class="install-steps">
-          <li>사파리 하단의 <i class="icon-inline">공유</i> 버튼(□↑)을 탭하세요</li>
-          <li>스크롤을 내려 <strong>"홈 화면에 추가"</strong>를 탭하세요</li>
-          <li>오른쪽 위 <strong>"추가"</strong>를 탭하면 설치 완료!</li>
-          <li>홈 화면에서 앱 아이콘으로 실행하세요</li>
-        </ol>
-      </div>
-
-      <!-- Android / 갤럭시 안내 -->
-      <div id="android-guide" style="display:none;">
-        <span class="install-badge">갤럭시 · 크롬</span>
-        <ol class="install-steps">
-          <li>크롬 오른쪽 위 <strong>⋮ 메뉴</strong>를 탭하세요</li>
-          <li><strong>"앱 설치"</strong> 또는 <strong>"홈 화면에 추가"</strong>를 탭하세요</li>
-          <li><strong>"설치"</strong>를 탭하면 완료!</li>
-          <li>홈 화면 또는 앱 서랍에서 실행하세요</li>
-        </ol>
-      </div>
-
-      <!-- 데스크톱 안내 -->
-      <div id="desktop-guide" style="display:none;">
-        <span class="install-badge">PC · 크롬</span>
-        <ol class="install-steps">
-          <li>아이폰 또는 갤럭시로 이 페이지를 여세요</li>
-          <li>위의 기기별 설명에 따라 홈 화면에 추가하세요</li>
-        </ol>
+      <div class="card">
+        <form id="form-new-tournament">
+          <div class="form-group">
+            <label class="form-label">대회 이름</label>
+            <input id="input-tournament-name" class="form-input" type="text"
+              placeholder="예) 6월 정기대회" maxlength="30" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">날짜</label>
+            <input id="input-tournament-date" class="form-input" type="date" required>
+          </div>
+          <div class="form-hint">PAR 합계: 132 (A·B·C·D 각 33)</div>
+          <button type="submit" class="btn btn-primary btn-lg" style="margin-top:20px;">저장</button>
+          <button type="button" id="btn-cancel-tournament" class="btn btn-secondary btn-lg">취소</button>
+        </form>
       </div>
     </div>
+  </div>
 
-  </main>
+  <!-- ── 화면 3: 명단 관리 ── -->
+  <div id="screen-roster" class="screen">
+    <div class="screen-body">
+      <div class="section-header">
+        <button id="btn-roster-back" class="btn-back">← 목록</button>
+        <div>
+          <div class="section-title" id="roster-title"></div>
+          <div class="section-sub" id="roster-date"></div>
+        </div>
+      </div>
 
-  <script src="./js/app.js"></script>
+      <div class="card">
+        <div class="card-title">참가자 명단</div>
+        <div class="attend-hint">체크 = 오늘 대회 참석</div>
+        <div id="participant-list" class="participant-list"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">참가자 추가</div>
+        <form id="form-add-participant" class="add-form">
+          <input id="input-participant-name" class="form-input" type="text"
+            placeholder="이름 입력" maxlength="10" autocomplete="off">
+          <button type="submit" class="btn btn-primary">추가</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 확인 모달 ── -->
+  <div id="modal-confirm" class="modal-overlay">
+    <div class="modal-box">
+      <p id="modal-msg"></p>
+      <div class="modal-actions">
+        <button id="modal-yes" class="btn btn-primary">확인</button>
+        <button id="modal-no" class="btn btn-secondary">취소</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 토스트 ── -->
+  <div id="toast" class="toast"></div>
+
+  <script type="module" src="./js/app.js"></script>
 </body>
 </html>
