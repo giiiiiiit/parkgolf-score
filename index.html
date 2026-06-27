@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+
+  <title>파크골프 스코어 집계</title>
+  <meta name="description" content="파크골프 대회 스코어를 사진으로 집계하는 앱">
+
+  <!-- PWA 기본 -->
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#2d7a3a">
+
+  <!-- iOS Safari PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="파크골프">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+
+  <!-- 일반 파비콘 -->
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+
+  <header class="app-header">
+    <h1>⛳ 파크골프 스코어 집계</h1>
+    <p class="subtitle">수기 스코어 카드 → 자동 순위 집계</p>
+  </header>
+
+  <main class="main-content">
+
+    <!-- 메인 메뉴 (준비 중) -->
+    <div class="card">
+      <div class="coming-soon">
+        <span class="emoji">🏌️</span>
+        <p>대회 관리, 명단 등록, 사진 업로드,<br>순위 집계 기능이 곧 추가됩니다.</p>
+      </div>
+      <button class="btn btn-primary" disabled style="opacity:0.4; margin-top:20px;">
+        새 대회 시작
+      </button>
+      <button class="btn btn-secondary" disabled style="opacity:0.4;">
+        지난 대회 보기
+      </button>
+    </div>
+
+    <!-- 설치 안내 -->
+    <div class="card install-guide">
+      <div class="card-title">
+        <span>📲</span> 앱으로 설치하기
+      </div>
+
+      <!-- iOS 안내 -->
+      <div id="ios-guide" style="display:none;">
+        <span class="install-badge">아이폰 · 사파리</span>
+        <ol class="install-steps">
+          <li>사파리 하단의 <i class="icon-inline">공유</i> 버튼(□↑)을 탭하세요</li>
+          <li>스크롤을 내려 <strong>"홈 화면에 추가"</strong>를 탭하세요</li>
+          <li>오른쪽 위 <strong>"추가"</strong>를 탭하면 설치 완료!</li>
+          <li>홈 화면에서 앱 아이콘으로 실행하세요</li>
+        </ol>
+      </div>
+
+      <!-- Android / 갤럭시 안내 -->
+      <div id="android-guide" style="display:none;">
+        <span class="install-badge">갤럭시 · 크롬</span>
+        <ol class="install-steps">
+          <li>크롬 오른쪽 위 <strong>⋮ 메뉴</strong>를 탭하세요</li>
+          <li><strong>"앱 설치"</strong> 또는 <strong>"홈 화면에 추가"</strong>를 탭하세요</li>
+          <li><strong>"설치"</strong>를 탭하면 완료!</li>
+          <li>홈 화면 또는 앱 서랍에서 실행하세요</li>
+        </ol>
+      </div>
+
+      <!-- 데스크톱 안내 -->
+      <div id="desktop-guide" style="display:none;">
+        <span class="install-badge">PC · 크롬</span>
+        <ol class="install-steps">
+          <li>아이폰 또는 갤럭시로 이 페이지를 여세요</li>
+          <li>위의 기기별 설명에 따라 홈 화면에 추가하세요</li>
+        </ol>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="./js/app.js"></script>
+</body>
+</html>

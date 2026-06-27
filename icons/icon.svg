@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="80" fill="#2d7a3a"/>
+  <circle cx="256" cy="180" r="60" fill="white"/>
+  <rect x="248" y="235" width="16" height="130" fill="white"/>
+  <rect x="264" y="235" width="60" height="12" fill="white"/>
+  <ellipse cx="256" cy="390" rx="80" ry="14" fill="#1a5c24"/>
+  <text x="256" y="470" font-family="Arial, sans-serif" font-size="72" font-weight="bold" fill="white" text-anchor="middle">PG</text>
+</svg>
