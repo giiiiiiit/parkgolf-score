@@ -1,6 +1,6 @@
 'use strict';
 import { DB } from './db.js';
-import { extractScores } from './ocr.js';
+import { extractScores, extractBatchScores } from './ocr.js';
 
 // ── Service Worker ──
 if ('serviceWorker' in navigator) {
@@ -12,7 +12,7 @@ if ('serviceWorker' in navigator) {
 // ── 라우터 ──
 const screens = {};
 let currentTournamentId = null;
-let currentScoreId = null;      // 현재 편집 중인 score 레코드 id
+let currentScoreId = null;
 let currentParticipantName = '';
 
 function showScreen(name, data = {}) {
@@ -22,7 +22,7 @@ function showScreen(name, data = {}) {
   if (screens[name]) screens[name](data);
 }
 
-// ── 토스트 메시지 ──
+// ── 토스트 ──
 function toast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -48,20 +48,58 @@ function confirm(msg) {
   });
 }
 
+// ── 이름 수정 다이얼로그 ──
+let _editNameResolve = null;
+document.getElementById('modal-edit-save').onclick = () => {
+  const val = document.getElementById('input-edit-name').value.trim();
+  document.getElementById('modal-edit-name').classList.remove('show');
+  if (_editNameResolve) { _editNameResolve(val || null); _editNameResolve = null; }
+};
+document.getElementById('modal-edit-cancel').onclick = () => {
+  document.getElementById('modal-edit-name').classList.remove('show');
+  if (_editNameResolve) { _editNameResolve(null); _editNameResolve = null; }
+};
+document.getElementById('input-edit-name').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('modal-edit-save').click();
+});
+
+function promptEditName(currentName) {
+  return new Promise(resolve => {
+    _editNameResolve = resolve;
+    const inp = document.getElementById('input-edit-name');
+    inp.value = currentName;
+    document.getElementById('modal-edit-name').classList.add('show');
+    setTimeout(() => inp.focus(), 50);
+  });
+}
+
+// ── OCR 오버레이 ──
+const ocrOverlay = document.getElementById('ocr-overlay');
+function showOcrOverlay(msg = 'OCR 준비 중...') {
+  document.getElementById('ocr-status').textContent = msg;
+  document.getElementById('ocr-bar').style.width = '0%';
+  document.getElementById('ocr-pct').textContent = '0%';
+  ocrOverlay.style.display = 'flex';
+}
+function updateOcrProgress(pct) {
+  document.getElementById('ocr-status').textContent = '숫자 인식 중...';
+  document.getElementById('ocr-bar').style.width = pct + '%';
+  document.getElementById('ocr-pct').textContent = pct + '%';
+}
+function hideOcrOverlay() { ocrOverlay.style.display = 'none'; }
+
 // ────────────────────────────────
-// 화면 1: 홈 (대회 목록)
+// 화면 1: 홈
 // ────────────────────────────────
 screens.home = async () => {
   const list = document.getElementById('tournament-list');
   list.innerHTML = '<p class="loading">불러오는 중...</p>';
   const tournaments = await DB.tournament.getAll();
   tournaments.sort((a, b) => b.date.localeCompare(a.date));
-
   if (tournaments.length === 0) {
     list.innerHTML = '<p class="empty-msg">등록된 대회가 없습니다.<br>아래 버튼으로 첫 대회를 만들어보세요!</p>';
     return;
   }
-
   list.innerHTML = tournaments.map(t => `
     <div class="tournament-card" data-id="${t.id}">
       <div class="tc-info">
@@ -74,19 +112,18 @@ screens.home = async () => {
       </div>
     </div>
   `).join('');
-
   list.querySelectorAll('.btn-enter').forEach(btn => {
-    btn.onclick = () => {
-      currentTournamentId = Number(btn.dataset.id);
-      showScreen('roster');
-    };
+    btn.onclick = () => { currentTournamentId = Number(btn.dataset.id); showScreen('roster'); };
   });
-
   list.querySelectorAll('.btn-del').forEach(btn => {
     btn.onclick = async () => {
       const ok = await confirm('대회를 삭제할까요?\n관련 성적도 함께 삭제됩니다.');
       if (!ok) return;
-      await DB.tournament.delete(Number(btn.dataset.id));
+      // 해당 대회의 점수도 모두 삭제
+      const tid = Number(btn.dataset.id);
+      const scores = await DB.score.getByTournament(tid);
+      await Promise.all(scores.map(s => DB.score.delete(s.id)));
+      await DB.tournament.delete(tid);
       toast('삭제했습니다');
       showScreen('home');
     };
@@ -101,7 +138,6 @@ screens['new-tournament'] = () => {
   document.getElementById('input-tournament-name').value = '';
   document.getElementById('input-tournament-name').focus();
 };
-
 document.getElementById('form-new-tournament').onsubmit = async e => {
   e.preventDefault();
   const name = document.getElementById('input-tournament-name').value.trim();
@@ -111,7 +147,6 @@ document.getElementById('form-new-tournament').onsubmit = async e => {
   toast('대회를 만들었습니다');
   showScreen('home');
 };
-
 document.getElementById('btn-cancel-tournament').onclick = () => showScreen('home');
 
 // ────────────────────────────────
@@ -129,28 +164,28 @@ async function renderRoster() {
   const all = await DB.participant.getAll();
   const scores = await DB.score.getByTournament(currentTournamentId);
   const attendIds = new Set(scores.map(s => s.participantId));
-
   const list = document.getElementById('participant-list');
+
   if (all.length === 0) {
     list.innerHTML = '<p class="empty-msg">참가자를 추가해주세요</p>';
-    return;
+  } else {
+    list.innerHTML = all.map(p => {
+      const checked = attendIds.has(p.id) ? 'checked' : '';
+      return `
+        <div class="participant-row" data-id="${p.id}">
+          <label class="attend-label">
+            <input type="checkbox" class="attend-check" data-id="${p.id}" ${checked}>
+            <span class="p-name">${escHtml(p.name)}</span>
+          </label>
+          <div class="p-actions">
+            <button class="btn-icon btn-edit-p" data-id="${p.id}" data-name="${escHtml(p.name)}" title="이름 수정">✏️</button>
+            <button class="btn-icon btn-del-p" data-id="${p.id}" title="삭제">🗑</button>
+          </div>
+        </div>
+      `;
+    }).join('');
   }
 
-  list.innerHTML = all.map(p => {
-    const checked = attendIds.has(p.id) ? 'checked' : '';
-    return `
-      <div class="participant-row" data-id="${p.id}">
-        <label class="attend-label">
-          <input type="checkbox" class="attend-check" data-id="${p.id}" ${checked}>
-          <span class="p-name">${escHtml(p.name)}</span>
-        </label>
-        <button class="btn-icon btn-del-p" data-id="${p.id}" title="삭제">🗑</button>
-      </div>
-    `;
-  }).join('');
-
-  // 참석자가 1명 이상이면 점수 입력 버튼 표시
-  const attendCount = attendIds.size;
   let gotoBtn = document.getElementById('btn-goto-scores');
   if (!gotoBtn) {
     gotoBtn = document.createElement('button');
@@ -159,8 +194,8 @@ async function renderRoster() {
     list.parentElement.after(gotoBtn);
   }
   gotoBtn.onclick = () => showScreen('score-list');
-  if (attendCount > 0) {
-    gotoBtn.textContent = `점수 입력하기 (${attendCount}명)`;
+  if (attendIds.size > 0) {
+    gotoBtn.textContent = `점수 입력하기 (${attendIds.size}명)`;
     gotoBtn.style.display = '';
   } else {
     gotoBtn.style.display = 'none';
@@ -172,12 +207,7 @@ async function renderRoster() {
       if (cb.checked) {
         const existing = scores.find(s => s.participantId === pid);
         if (!existing) {
-          const newScore = {
-            tournamentId: currentTournamentId,
-            participantId: pid,
-            A: null, B: null, C: null, D: null,
-            total: null, source: null, imageRef: null
-          };
+          const newScore = { tournamentId: currentTournamentId, participantId: pid, A: null, B: null, C: null, D: null, total: null, source: null };
           const id = await DB.score.add(newScore);
           scores.push({ ...newScore, id });
           attendIds.add(pid);
@@ -192,22 +222,39 @@ async function renderRoster() {
           attendIds.delete(pid);
         }
       }
-      // 버튼 카운트 갱신
       const cnt = attendIds.size;
-      if (cnt > 0) {
-        gotoBtn.textContent = `점수 입력하기 (${cnt}명)`;
-        gotoBtn.style.display = '';
-      } else {
-        gotoBtn.style.display = 'none';
-      }
+      gotoBtn.textContent = `점수 입력하기 (${cnt}명)`;
+      gotoBtn.style.display = cnt > 0 ? '' : 'none';
     };
   });
 
+  // ✏️ 이름 수정
+  list.querySelectorAll('.btn-edit-p').forEach(btn => {
+    btn.onclick = async () => {
+      const pid = Number(btn.dataset.id);
+      const oldName = btn.dataset.name;
+      const newName = await promptEditName(oldName);
+      if (!newName || newName === oldName) return;
+      const all2 = await DB.participant.getAll();
+      if (all2.some(p => p.name === newName)) { toast('이미 사용 중인 이름입니다'); return; }
+      const p = await DB.participant.get(pid);
+      await DB.participant.update({ ...p, name: newName });
+      toast('이름을 수정했습니다');
+      await renderRoster();
+    };
+  });
+
+  // 🗑 참가자 삭제 → 해당 대회 점수도 같이 삭제
   list.querySelectorAll('.btn-del-p').forEach(btn => {
     btn.onclick = async () => {
-      const ok = await confirm('참가자를 명단에서 삭제할까요?');
+      const ok = await confirm('참가자를 명단에서 삭제할까요?\n이 대회의 점수도 삭제됩니다.');
       if (!ok) return;
-      await DB.participant.delete(Number(btn.dataset.id));
+      const pid = Number(btn.dataset.id);
+      // 현재 대회의 점수 삭제
+      const existingScore = scores.find(s => s.participantId === pid);
+      if (existingScore) await DB.score.delete(existingScore.id);
+      // 참가자 삭제
+      await DB.participant.delete(pid);
       toast('삭제했습니다');
       await renderRoster();
     };
@@ -219,10 +266,7 @@ document.getElementById('form-add-participant').onsubmit = async e => {
   const name = document.getElementById('input-participant-name').value.trim();
   if (!name) return;
   const all = await DB.participant.getAll();
-  if (all.some(p => p.name === name)) {
-    toast('이미 등록된 이름입니다');
-    return;
-  }
+  if (all.some(p => p.name === name)) { toast('이미 등록된 이름입니다'); return; }
   await DB.participant.add({ name });
   document.getElementById('input-participant-name').value = '';
   toast(`${name} 추가됨`);
@@ -245,8 +289,8 @@ async function renderScoreList() {
   const scores = await DB.score.getByTournament(currentTournamentId);
   const allParticipants = await DB.participant.getAll();
   const pMap = Object.fromEntries(allParticipants.map(p => [p.id, p]));
-
   const container = document.getElementById('score-list-items');
+
   if (scores.length === 0) {
     container.innerHTML = '<p class="empty-msg">참석자가 없습니다.<br>명단 화면에서 체크해주세요.</p>';
     return;
@@ -257,15 +301,13 @@ async function renderScoreList() {
     if (!p) return '';
     const done = s.A !== null && s.B !== null && s.C !== null && s.D !== null;
     const total = done ? s.A + s.B + s.C + s.D : null;
-    const diffStr = done ? parDiffStr(total) : '';
     return `
       <div class="score-list-card ${done ? 'done' : 'pending'}" data-score-id="${s.id}" data-p-name="${escHtml(p.name)}">
         <div class="slc-info">
           <div class="slc-name">${escHtml(p.name)}</div>
           ${done
-            ? `<div class="slc-score">${s.A} · ${s.B} · ${s.C} · ${s.D} = <strong>${total}</strong> ${diffStr}</div>`
-            : `<div class="slc-score pending-label">미입력</div>`
-          }
+            ? `<div class="slc-score">${s.A} · ${s.B} · ${s.C} · ${s.D} = <strong>${total}</strong> ${parDiffStr(total)}</div>`
+            : `<div class="slc-score pending-label">미입력</div>`}
         </div>
         <span class="slc-badge ${done ? 'badge-done' : 'badge-pending'}">${done ? '완료' : '입력'}</span>
       </div>
@@ -279,33 +321,170 @@ async function renderScoreList() {
       showScreen('score-entry');
     };
   });
-
 }
 
 document.getElementById('btn-scorelist-back').onclick = () => showScreen('roster');
 document.getElementById('btn-goto-ranking').onclick = () => showScreen('ranking');
 
+// ── 일괄 카드 OCR 버튼 (점수목록 화면) ──
+document.getElementById('btn-batch-camera').onclick = () => document.getElementById('batch-file-camera').click();
+document.getElementById('btn-batch-gallery').onclick = () => document.getElementById('batch-file-gallery').click();
+document.getElementById('batch-file-camera').onchange = () => handleBatchOcr(document.getElementById('batch-file-camera'));
+document.getElementById('batch-file-gallery').onchange = () => handleBatchOcr(document.getElementById('batch-file-gallery'));
+
+async function handleBatchOcr(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+
+  showOcrOverlay('OCR 준비 중... (첫 실행은 다운로드가 필요합니다)');
+  try {
+    const nums = await extractBatchScores(file, pct => updateOcrProgress(pct));
+    hideOcrOverlay();
+    if (nums.length === 0) {
+      toast('숫자를 인식하지 못했습니다. 더 밝고 정면으로 촬영해보세요.');
+      return;
+    }
+    showScreen('batch-ocr', { nums });
+  } catch (err) {
+    hideOcrOverlay();
+    toast(err.message || 'OCR 오류가 발생했습니다.');
+  }
+}
+
 // ────────────────────────────────
-// 화면 4: 점수 입력
+// 화면 7: 일괄 OCR 입력
+// ────────────────────────────────
+screens['batch-ocr'] = async ({ nums = [] } = {}) => {
+  const scores = await DB.score.getByTournament(currentTournamentId);
+  const allParticipants = await DB.participant.getAll();
+  const pMap = Object.fromEntries(allParticipants.map(p => [p.id, p]));
+
+  // 참석자만 (점수 레코드가 있는 사람)
+  const attendees = scores.map(s => ({
+    scoreId: s.id,
+    pid: s.participantId,
+    name: pMap[s.participantId]?.name ?? '알 수 없음',
+    A: s.A, B: s.B, C: s.C, D: s.D
+  }));
+
+  const n = attendees.length;
+  const warnEl = document.getElementById('batch-warn');
+
+  if (n === 0) {
+    warnEl.style.display = '';
+    warnEl.textContent = '참석자가 없습니다. 명단에서 먼저 체크해주세요.';
+    document.getElementById('batch-grid').innerHTML = '';
+    return;
+  }
+  warnEl.style.display = 'none';
+
+  // 카드 읽기 순서: A코스 전원 → B코스 전원 → C코스 전원 → D코스 전원
+  // nums[course*n + personIndex] = 해당 타수
+  const courses = ['A', 'B', 'C', 'D'];
+  const filled = attendees.map((att, j) => {
+    const vals = {};
+    courses.forEach((c, ci) => {
+      const idx = ci * n + j;
+      vals[c] = (idx < nums.length && nums[idx] >= 20 && nums[idx] <= 60) ? nums[idx] : (att[c] ?? '');
+    });
+    return vals;
+  });
+
+  const grid = document.getElementById('batch-grid');
+  grid.innerHTML = attendees.map((att, i) => {
+    const v = filled[i];
+    const computedTotal = () => {
+      const vals = ['A','B','C','D'].map(c => parseInt(document.getElementById(`batch-${att.scoreId}-${c}`).value, 10));
+      return vals.every(x => !isNaN(x)) ? vals.reduce((a,b)=>a+b,0) : null;
+    };
+    return `
+      <div class="batch-row" data-score-id="${att.scoreId}">
+        <div class="batch-name">${escHtml(att.name)}</div>
+        <div class="batch-scores">
+          ${courses.map(c => `
+            <div class="batch-cell">
+              <label class="batch-course-label">${c}</label>
+              <input class="batch-score-input" id="batch-${att.scoreId}-${c}" data-sid="${att.scoreId}"
+                type="number" inputmode="numeric" min="1" max="99"
+                value="${v[c] !== '' ? v[c] : ''}" placeholder="–">
+            </div>
+          `).join('')}
+        </div>
+        <div class="batch-total-col">
+          <span class="batch-total-label">합계</span>
+          <span class="batch-total-val" id="batch-total-${att.scoreId}">–</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // 합계 실시간 업데이트
+  const updateRowTotal = sid => {
+    const vals = courses.map(c => parseInt(document.getElementById(`batch-${sid}-${c}`).value, 10));
+    const el = document.getElementById(`batch-total-${sid}`);
+    if (vals.every(x => !isNaN(x))) {
+      const t = vals.reduce((a,b)=>a+b,0);
+      const diff = t - 132;
+      const diffStr = diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`;
+      el.textContent = `${t} (${diffStr})`;
+      el.className = 'batch-total-val ' + (diff <= 0 ? 'under' : 'over');
+    } else {
+      el.textContent = '–';
+      el.className = 'batch-total-val';
+    }
+  };
+
+  grid.querySelectorAll('.batch-score-input').forEach(inp => {
+    inp.oninput = () => updateRowTotal(inp.dataset.sid);
+    updateRowTotal(inp.dataset.sid);
+  });
+
+  // 인식된 숫자 안내
+  if (nums.length > 0) {
+    warnEl.style.display = '';
+    warnEl.style.background = '#e8f5e9';
+    warnEl.style.color = '#2d7a3a';
+    warnEl.style.borderColor = '#2d7a3a';
+    warnEl.textContent = `인식된 숫자 ${nums.length}개: ${nums.join(', ')} — 칸을 직접 수정할 수 있습니다.`;
+  }
+};
+
+document.getElementById('btn-batch-back').onclick = () => showScreen('score-list');
+
+document.getElementById('btn-batch-save').onclick = async () => {
+  const scores = await DB.score.getByTournament(currentTournamentId);
+  const courses = ['A','B','C','D'];
+  let savedCount = 0;
+  let missingCount = 0;
+
+  for (const s of scores) {
+    const vals = courses.map(c => parseInt(document.getElementById(`batch-${s.id}-${c}`)?.value, 10));
+    if (vals.every(x => !isNaN(x))) {
+      const [a,b,c,d] = vals;
+      await DB.score.update({ ...s, A:a, B:b, C:c, D:d, total: a+b+c+d });
+      savedCount++;
+    } else {
+      missingCount++;
+    }
+  }
+  toast(`${savedCount}명 저장 완료${missingCount > 0 ? ` (${missingCount}명 미완료)` : ''}`);
+  showScreen('score-list');
+};
+
+// ────────────────────────────────
+// 화면 4: 점수 입력 (개인)
 // ────────────────────────────────
 screens['score-entry'] = async () => {
   document.getElementById('entry-name').textContent = currentParticipantName;
   const score = await DB.score.get(currentScoreId);
-
   const inputs = { A: document.getElementById('score-A'), B: document.getElementById('score-B'),
                    C: document.getElementById('score-C'), D: document.getElementById('score-D') };
-
-  // 기존 값 복원
   for (const k of ['A','B','C','D']) {
     inputs[k].value = score[k] !== null ? score[k] : '';
   }
-  document.getElementById('score-mismatch-warn').style.display = 'none';
   updateTotalDisplay();
-
-  // 입력할 때마다 합계 갱신
-  for (const inp of Object.values(inputs)) {
-    inp.oninput = updateTotalDisplay;
-  }
+  for (const inp of Object.values(inputs)) { inp.oninput = updateTotalDisplay; }
 };
 
 function getInputVals() {
@@ -333,8 +512,7 @@ function updateTotalDisplay() {
 document.getElementById('btn-save-score').onclick = async () => {
   const [a, b, c, d] = getInputVals();
   if (a === null || b === null || c === null || d === null) {
-    toast('A·B·C·D 코스를 모두 입력해주세요');
-    return;
+    toast('A·B·C·D 코스를 모두 입력해주세요'); return;
   }
   const total = a + b + c + d;
   const score = await DB.score.get(currentScoreId);
@@ -352,84 +530,6 @@ document.getElementById('btn-clear-score').onclick = async () => {
 
 document.getElementById('btn-entry-back').onclick = () => showScreen('score-list');
 
-// ── OCR ──
-const ocrFileCamera = document.getElementById('ocr-file-camera');
-const ocrFileGallery = document.getElementById('ocr-file-gallery');
-const ocrOverlay = document.getElementById('ocr-overlay');
-
-document.getElementById('btn-ocr-camera').onclick = () => ocrFileCamera.click();
-document.getElementById('btn-ocr-gallery').onclick = () => ocrFileGallery.click();
-ocrFileCamera.onchange = () => handleOcrFile(ocrFileCamera);
-ocrFileGallery.onchange = () => handleOcrFile(ocrFileGallery);
-
-async function handleOcrFile(input) {
-  const file = input.files[0];
-  if (!file) return;
-  input.value = '';
-
-  // 진행 오버레이 표시
-  const statusEl = document.getElementById('ocr-status');
-  const barEl = document.getElementById('ocr-bar');
-  const pctEl = document.getElementById('ocr-pct');
-  ocrOverlay.style.display = 'flex';
-  statusEl.textContent = 'OCR 준비 중... (첫 실행은 다운로드가 필요합니다)';
-  barEl.style.width = '0%';
-  pctEl.textContent = '0%';
-
-  try {
-    const nums = await extractScores(file, pct => {
-
-      statusEl.textContent = '숫자 인식 중...';
-      barEl.style.width = pct + '%';
-      pctEl.textContent = pct + '%';
-    });
-    ocrOverlay.style.display = 'none';
-
-    if (nums.length === 0) {
-      toast('숫자를 인식하지 못했습니다. 더 밝고 정면으로 촬영해보세요.');
-      return;
-    }
-
-    showOcrCandidates(nums);
-  } catch (err) {
-    ocrOverlay.style.display = 'none';
-    toast(err.message || 'OCR 오류가 발생했습니다.');
-  }
-};
-
-function showOcrCandidates(nums) {
-  const box = document.getElementById('ocr-candidates-box');
-  const grid = document.getElementById('ocr-candidates');
-  box.style.display = '';
-
-  // 중복 제거 후 최대 8개 표시
-  const unique = [...new Set(nums)].slice(0, 8);
-  let nextCourse = 0;
-  const courses = ['A', 'B', 'C', 'D'];
-
-  grid.innerHTML = unique.map(n => `
-    <button class="candidate-chip" data-num="${n}">${n}</button>
-  `).join('');
-
-  grid.querySelectorAll('.candidate-chip').forEach(chip => {
-    chip.onclick = () => {
-      if (nextCourse >= 4) return;
-      const course = courses[nextCourse];
-      document.getElementById('score-' + course).value = chip.dataset.num;
-      chip.classList.add('used');
-      chip.disabled = true;
-      nextCourse++;
-      updateTotalDisplay();
-      if (nextCourse === 4) {
-        box.style.display = 'none';
-        toast('4개 코스가 모두 채워졌습니다. 확인 후 저장하세요.');
-      }
-    };
-  });
-
-  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-}
-
 // ────────────────────────────────
 // 화면 5: 순위 집계
 // ────────────────────────────────
@@ -442,18 +542,13 @@ screens.ranking = async () => {
   const allParticipants = await DB.participant.getAll();
   const pMap = Object.fromEntries(allParticipants.map(p => [p.id, p]));
 
-  // 완료된 점수만 집계, 미완료는 경고
   const complete = scores.filter(s => s.A !== null && s.B !== null && s.C !== null && s.D !== null);
   const incomplete = scores.length - complete.length;
+  document.getElementById('ranking-incomplete-warn').style.display = incomplete > 0 ? '' : 'none';
 
-  const warnEl = document.getElementById('ranking-incomplete-warn');
-  warnEl.style.display = incomplete > 0 ? '' : 'none';
-
-  // 순위 정렬: 총타수 오름차순, 동점 시 D→C→B→A 백카운트
   const entries = complete.map(s => ({
     name: pMap[s.participantId]?.name ?? '알 수 없음',
-    total: s.A + s.B + s.C + s.D,
-    A: s.A, B: s.B, C: s.C, D: s.D
+    total: s.A + s.B + s.C + s.D, A: s.A, B: s.B, C: s.C, D: s.D
   }));
 
   entries.sort((a, b) => {
@@ -464,7 +559,6 @@ screens.ranking = async () => {
     return a.A - b.A;
   });
 
-  // 공동 순위 계산
   const ranked = [];
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i];
@@ -475,7 +569,6 @@ screens.ranking = async () => {
   }
 
   const container = document.getElementById('ranking-list');
-
   if (ranked.length === 0) {
     container.innerHTML = '<p class="empty-msg">입력된 점수가 없습니다.</p>';
     return;
@@ -506,7 +599,7 @@ screens.ranking = async () => {
 
 document.getElementById('btn-ranking-back').onclick = () => showScreen('score-list');
 
-// ── 내보내기 공통: 현재 순위 데이터 수집 ──
+// ── 내보내기 공통 ──
 async function getRankedEntries() {
   const scores = await DB.score.getByTournament(currentTournamentId);
   const allParticipants = await DB.participant.getAll();
@@ -514,8 +607,7 @@ async function getRankedEntries() {
   const complete = scores.filter(s => s.A !== null && s.B !== null && s.C !== null && s.D !== null);
   const entries = complete.map(s => ({
     name: pMap[s.participantId]?.name ?? '알 수 없음',
-    total: s.A + s.B + s.C + s.D,
-    A: s.A, B: s.B, C: s.C, D: s.D
+    total: s.A + s.B + s.C + s.D, A: s.A, B: s.B, C: s.C, D: s.D
   }));
   entries.sort((a, b) => {
     if (a.total !== b.total) return a.total - b.total;
@@ -528,46 +620,34 @@ async function getRankedEntries() {
   return entries.map((e, i, arr) => {
     if (i > 0) {
       const p = arr[i - 1];
-      const tied = e.total === p.total && e.D === p.D && e.C === p.C && e.B === p.B && e.A === p.A;
-      if (!tied) rank = i + 1;
+      if (!(e.total === p.total && e.D === p.D && e.C === p.C && e.B === p.B && e.A === p.A)) rank = i + 1;
     }
     return { ...e, rank };
   });
 }
 
-// ── CSV 내보내기 ──
 document.getElementById('btn-export-csv').onclick = async () => {
   const tournament = await DB.tournament.get(currentTournamentId);
   const ranked = await getRankedEntries();
   if (ranked.length === 0) { toast('집계된 점수가 없습니다'); return; }
-
-  const BOM = '﻿'; // 엑셀 한글 깨짐 방지
-  const header = ['순위', '이름', '합계', 'A코스', 'B코스', 'C코스', 'D코스'];
+  const BOM = '﻿';
+  const header = ['순위','이름','합계','A코스','B코스','C코스','D코스'];
   const rows = ranked.map(e => [e.rank, e.name, e.total, e.A, e.B, e.C, e.D]);
   const csv = BOM + [header, ...rows].map(r => r.join(',')).join('\n');
-
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const safeName = tournament.name.replace(/[^\w가-힣]/g, '_');
-  a.href = url;
-  a.download = `${safeName}_순위.csv`;
-  a.click();
+  a.href = url; a.download = `${tournament.name.replace(/[^\w가-힣]/g,'_')}_순위.csv`; a.click();
   URL.revokeObjectURL(url);
   toast('CSV 저장 완료');
 };
 
-// ── 결과 공유 ──
 document.getElementById('btn-share').onclick = async () => {
   const tournament = await DB.tournament.get(currentTournamentId);
   const ranked = await getRankedEntries();
   if (ranked.length === 0) { toast('집계된 점수가 없습니다'); return; }
-
   const lines = [
-    `⛳ ${tournament.name} 순위 결과`,
-    `📅 ${formatDate(tournament.date)}`,
-    `PAR 132`,
-    '',
+    `⛳ ${tournament.name} 순위 결과`, `📅 ${formatDate(tournament.date)}`, `PAR 132`, '',
     ...ranked.map(e => {
       const diff = e.total - 132;
       const diffStr = diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`;
@@ -575,22 +655,12 @@ document.getElementById('btn-share').onclick = async () => {
     })
   ];
   const text = lines.join('\n');
-
   if (navigator.share) {
-    try {
-      await navigator.share({ title: tournament.name + ' 순위', text });
-      return;
-    } catch (e) {
-      if (e.name === 'AbortError') return; // 사용자가 취소
-    }
+    try { await navigator.share({ title: tournament.name + ' 순위', text }); return; }
+    catch (e) { if (e.name === 'AbortError') return; }
   }
-  // 폴백: 클립보드 복사
-  try {
-    await navigator.clipboard.writeText(text);
-    toast('클립보드에 복사됐습니다');
-  } catch {
-    toast('공유 기능을 지원하지 않는 환경입니다');
-  }
+  try { await navigator.clipboard.writeText(text); toast('클립보드에 복사됐습니다'); }
+  catch { toast('공유 기능을 지원하지 않는 환경입니다'); }
 };
 
 // ────────────────────────────────
@@ -603,8 +673,8 @@ function parDiffStr(total) {
 }
 
 function escHtml(str) {
-  return String(str).replace(/[&<>"']/g, c =>
-    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  return String(str).replace(/[&<>"']/g,
+    c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
 function formatDate(dateStr) {
@@ -612,7 +682,4 @@ function formatDate(dateStr) {
   return `${y}년 ${m}월 ${d}일`;
 }
 
-// DB에 score.get 추가 (단건 조회)
-// db.js의 score.get은 tx 래퍼로 처리
-// ── 시작 ──
 showScreen('home');

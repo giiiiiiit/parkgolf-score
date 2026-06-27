@@ -196,6 +196,7 @@ body {
   flex-shrink: 0;
 }
 .p-name { font-size: 1rem; font-weight: 500; }
+.p-actions { display: flex; gap: 4px; flex-shrink: 0; }
 
 /* ── 참가자 추가 폼 ── */
 .add-form {
@@ -500,3 +501,59 @@ body {
 @media (min-width: 520px) {
   .app-header { padding: 18px 24px; }
 }
+
+/* ── 일괄 OCR 입력 그리드 ── */
+.batch-grid { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+
+.batch-row {
+  background: var(--white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+}
+.batch-name {
+  font-weight: 700;
+  font-size: 1.05rem;
+  margin-bottom: 10px;
+  color: var(--green-dark);
+}
+.batch-scores {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.batch-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.batch-course-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-sub);
+  letter-spacing: 0.05em;
+}
+.batch-score-input {
+  width: 100%;
+  text-align: center;
+  font-size: 1.1rem;
+  font-weight: 700;
+  padding: 10px 4px;
+  border: 2px solid var(--gray);
+  border-radius: 10px;
+  background: var(--gray-light);
+  color: var(--text);
+  -moz-appearance: textfield;
+}
+.batch-score-input:focus { border-color: var(--green); outline: none; background: var(--white); }
+.batch-score-input::-webkit-outer-spin-button,
+.batch-score-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+.batch-total-col {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--gray);
+}
+.batch-total-label { font-size: 0.85rem; color: var(--text-sub); }
+.batch-total-val { font-size: 1rem; font-weight: 700; }
+.batch-total-val.under { color: var(--green); }
+.batch-total-val.over  { color: var(--danger); }

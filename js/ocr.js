@@ -1,12 +1,8 @@
 'use strict';
 
 const TESSERACT_CDN = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
-
-let _worker = null;
-let _loading = false;
 let _loadPromise = null;
 
-// Tesseract.js를 동적으로 로드 (첫 호출 시 한 번만)
 function loadTesseract() {
   if (window.Tesseract) return Promise.resolve();
   if (_loadPromise) return _loadPromise;
@@ -20,43 +16,59 @@ function loadTesseract() {
   return _loadPromise;
 }
 
-// Worker 초기화 (언어: eng — 숫자 인식)
-async function getWorker(onProgress) {
-  if (_worker) return _worker;
+// 단건 인식: 개인 코스 점수 4개 추출 (25~60 범위)
+export async function extractScores(imageBlob, onProgress) {
   await loadTesseract();
-  _worker = await Tesseract.createWorker('eng', 1, {
+  const worker = await Tesseract.createWorker('eng', 1, {
     logger: m => {
-      if (m.status === 'recognizing text' && onProgress) {
-        onProgress(Math.round(m.progress * 100));
-      }
+      if (m.status === 'recognizing text' && onProgress) onProgress(Math.round(m.progress * 100));
     }
   });
-  // 숫자 인식에 최적화
-  await _worker.setParameters({
+  await worker.setParameters({
     tessedit_char_whitelist: '0123456789',
+    tessedit_pageseg_mode: '6',
   });
-  return _worker;
-}
-
-// 이미지에서 파크골프 타수 추출
-export async function extractScores(imageBlob, onProgress) {
-  const worker = await getWorker(onProgress);
   const url = URL.createObjectURL(imageBlob);
   try {
     const { data: { text } } = await worker.recognize(url);
-    return parseScores(text);
+    await worker.terminate();
+    return parseRange(text, 25, 60);
   } finally {
     URL.revokeObjectURL(url);
   }
 }
 
-// 텍스트에서 파크골프 타수 범위(25~55) 숫자 추출
-function parseScores(text) {
+// 전체 카드 인식: 합계표에서 타수 전부 추출
+// 카드 읽기 순서(행 우선): A코스 전원 → B코스 전원 → C코스 전원 → D코스 전원
+export async function extractBatchScores(imageBlob, onProgress) {
+  await loadTesseract();
+  const worker = await Tesseract.createWorker('eng', 1, {
+    logger: m => {
+      if (m.status === 'recognizing text' && onProgress) onProgress(Math.round(m.progress * 100));
+    }
+  });
+  // 숫자 + 공백만 인식 (숫자 구분 목적)
+  await worker.setParameters({
+    tessedit_char_whitelist: '0123456789 ',
+    tessedit_pageseg_mode: '6',
+  });
+  const url = URL.createObjectURL(imageBlob);
+  try {
+    const { data: { text } } = await worker.recognize(url);
+    await worker.terminate();
+    // 개인 코스 타수 범위: 20~60 (합계 132+는 제외됨)
+    return parseRange(text, 20, 60);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function parseRange(text, min, max) {
   const nums = [];
   const matches = text.match(/\d+/g) || [];
   for (const m of matches) {
     const n = parseInt(m, 10);
-    if (n >= 25 && n <= 55) nums.push(n);
+    if (n >= min && n <= max) nums.push(n);
   }
-  return nums; // 중복 포함 원본 순서 반환
+  return nums;
 }
