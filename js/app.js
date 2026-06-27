@@ -465,13 +465,14 @@ screens.ranking = async () => {
   });
 
   // 공동 순위 계산
-  const ranked = entries.map((e, i, arr) => {
-    if (i === 0) return { ...e, rank: 1, tied: false };
-    const prev = arr[i - 1];
+  const ranked = [];
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    if (i === 0) { ranked.push({ ...e, rank: 1, tied: false }); continue; }
+    const prev = entries[i - 1];
     const sameTie = e.total === prev.total && e.D === prev.D && e.C === prev.C && e.B === prev.B && e.A === prev.A;
-    const prevRank = ranked[i - 1].rank;
-    return { ...e, rank: sameTie ? prevRank : i + 1, tied: sameTie };
-  });
+    ranked.push({ ...e, rank: sameTie ? ranked[i - 1].rank : i + 1, tied: sameTie });
+  }
 
   const container = document.getElementById('ranking-list');
 
