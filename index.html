@@ -22,6 +22,7 @@
 
   <header class="app-header">
     <h1>⛳ 파크골프 스코어 집계</h1>
+    <button id="btn-settings" class="header-settings" title="설정">⚙️</button>
   </header>
 
   <!-- ── 화면 1: 홈 ── -->
@@ -92,8 +93,8 @@
       </div>
       <!-- 일괄 카드 입력 -->
       <div class="card ocr-card">
-        <div class="card-title">📷 카드 사진 한 장으로 전체 입력 <span class="ocr-badge">OCR</span></div>
-        <p class="ocr-hint">합계표 전체를 촬영하면 참가자별 점수를 한 번에 입력합니다.</p>
+        <div class="card-title">📷 카드 사진 한 장으로 전체 입력 <span class="ocr-badge">AI</span></div>
+        <p class="ocr-hint">합계표 전체를 촬영하면 AI가 이름을 자동 매칭해 참가자별 점수를 한 번에 입력합니다.<br>※ 설정(⚙️)에서 Gemini API 키 입력 필요</p>
         <input id="batch-file-camera" type="file" accept="image/*" capture="environment" style="display:none">
         <input id="batch-file-gallery" type="file" accept="image/*" style="display:none">
         <div class="ocr-btn-row">
@@ -177,13 +178,11 @@
     </div>
   </div>
 
-  <!-- ── OCR 진행 오버레이 ── -->
+  <!-- ── 진행 오버레이 ── -->
   <div id="ocr-overlay" class="modal-overlay" style="display:none; flex-direction:column; gap:16px;">
     <div class="ocr-progress-box">
       <div class="ocr-spinner"></div>
-      <div id="ocr-status">OCR 준비 중...</div>
-      <div class="ocr-bar-wrap"><div id="ocr-bar" class="ocr-bar"></div></div>
-      <div id="ocr-pct">0%</div>
+      <div id="ocr-status">준비 중...</div>
     </div>
   </div>
 
@@ -196,6 +195,23 @@
         <button id="modal-edit-save" class="btn btn-primary">저장</button>
         <button id="modal-edit-cancel" class="btn btn-secondary">취소</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ── 설정 모달 (Gemini API 키) ── -->
+  <div id="modal-settings" class="modal-overlay">
+    <div class="modal-box">
+      <p style="font-weight:700; margin-bottom:10px;">⚙️ 설정 — Gemini API 키</p>
+      <p style="font-size:0.85rem; color:var(--text-sub); line-height:1.6; margin-bottom:12px;">
+        사진 자동 입력에 필요합니다. Google AI Studio에서 무료로 키를 발급받아 붙여넣으세요. 키는 이 기기에만 저장됩니다.
+      </p>
+      <input id="input-api-key" class="form-input" type="password" placeholder="API 키 붙여넣기 (AIza...)" autocomplete="off">
+      <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" class="settings-link">🔑 무료 API 키 발급받기</a>
+      <div class="modal-actions" style="margin-top:14px;">
+        <button id="modal-settings-save" class="btn btn-primary">저장</button>
+        <button id="modal-settings-cancel" class="btn btn-secondary">닫기</button>
+      </div>
+      <button id="modal-settings-clear" class="btn-link-danger">저장된 키 삭제</button>
     </div>
   </div>
 

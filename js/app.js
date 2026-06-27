@@ -1,6 +1,6 @@
 'use strict';
 import { DB } from './db.js';
-import { extractScores, extractBatchScores } from './ocr.js';
+import { analyzeCard, getApiKey, setApiKey, hasApiKey } from './gemini.js';
 
 // ── Service Worker ──
 if ('serviceWorker' in navigator) {
@@ -73,20 +73,34 @@ function promptEditName(currentName) {
   });
 }
 
-// ── OCR 오버레이 ──
+// ── 진행 오버레이 ──
 const ocrOverlay = document.getElementById('ocr-overlay');
-function showOcrOverlay(msg = 'OCR 준비 중...') {
+function showOcrOverlay(msg = '준비 중...') {
   document.getElementById('ocr-status').textContent = msg;
-  document.getElementById('ocr-bar').style.width = '0%';
-  document.getElementById('ocr-pct').textContent = '0%';
   ocrOverlay.style.display = 'flex';
 }
-function updateOcrProgress(pct) {
-  document.getElementById('ocr-status').textContent = '숫자 인식 중...';
-  document.getElementById('ocr-bar').style.width = pct + '%';
-  document.getElementById('ocr-pct').textContent = pct + '%';
-}
+function setOcrStatus(msg) { document.getElementById('ocr-status').textContent = msg; }
 function hideOcrOverlay() { ocrOverlay.style.display = 'none'; }
+
+// ── 설정 (Gemini API 키) ──
+function openSettings() {
+  document.getElementById('input-api-key').value = getApiKey();
+  document.getElementById('modal-settings').classList.add('show');
+}
+document.getElementById('btn-settings').onclick = openSettings;
+document.getElementById('modal-settings-cancel').onclick = () =>
+  document.getElementById('modal-settings').classList.remove('show');
+document.getElementById('modal-settings-save').onclick = () => {
+  const v = document.getElementById('input-api-key').value.trim();
+  setApiKey(v);
+  document.getElementById('modal-settings').classList.remove('show');
+  toast(v ? 'API 키를 저장했습니다' : '키를 비웠습니다');
+};
+document.getElementById('modal-settings-clear').onclick = () => {
+  setApiKey('');
+  document.getElementById('input-api-key').value = '';
+  toast('저장된 키를 삭제했습니다');
+};
 
 // ────────────────────────────────
 // 화면 1: 홈
@@ -337,94 +351,105 @@ async function handleBatchOcr(input) {
   if (!file) return;
   input.value = '';
 
-  showOcrOverlay('OCR 준비 중... (첫 실행은 다운로드가 필요합니다)');
+  if (!hasApiKey()) {
+    toast('먼저 설정(⚙️)에서 Gemini API 키를 입력해주세요');
+    openSettings();
+    return;
+  }
+
+  // 참석자 명단 확보 (이름 매칭 후보)
+  const scores = await DB.score.getByTournament(currentTournamentId);
+  if (scores.length === 0) {
+    toast('참석자가 없습니다. 명단에서 먼저 체크해주세요.');
+    return;
+  }
+  const allParticipants = await DB.participant.getAll();
+  const pMap = Object.fromEntries(allParticipants.map(p => [p.id, p]));
+  const attendeeNames = scores.map(s => pMap[s.participantId]?.name).filter(Boolean);
+
+  showOcrOverlay('이미지 준비 중...');
   try {
-    const nums = await extractBatchScores(file, pct => updateOcrProgress(pct));
+    const players = await analyzeCard(file, attendeeNames, msg => setOcrStatus(msg));
     hideOcrOverlay();
-    if (nums.length === 0) {
-      toast('숫자를 인식하지 못했습니다. 더 밝고 정면으로 촬영해보세요.');
+    if (players.length === 0) {
+      toast('카드에서 선수를 인식하지 못했습니다. 더 밝고 정면으로 촬영해보세요.');
       return;
     }
-    showScreen('batch-ocr', { nums });
+    showScreen('batch-ocr', { players });
   } catch (err) {
     hideOcrOverlay();
-    toast(err.message || 'OCR 오류가 발생했습니다.');
+    toast(err.message || '분석 오류가 발생했습니다.');
   }
 }
 
 // ────────────────────────────────
 // 화면 7: 일괄 OCR 입력
 // ────────────────────────────────
-screens['batch-ocr'] = async ({ nums = [] } = {}) => {
+screens['batch-ocr'] = async ({ players = [] } = {}) => {
   const scores = await DB.score.getByTournament(currentTournamentId);
   const allParticipants = await DB.participant.getAll();
   const pMap = Object.fromEntries(allParticipants.map(p => [p.id, p]));
+  const courses = ['A', 'B', 'C', 'D'];
 
-  // 참석자만 (점수 레코드가 있는 사람)
+  // 참석자 (점수 레코드 보유자)
   const attendees = scores.map(s => ({
     scoreId: s.id,
-    pid: s.participantId,
     name: pMap[s.participantId]?.name ?? '알 수 없음',
     A: s.A, B: s.B, C: s.C, D: s.D
   }));
 
-  const n = attendees.length;
   const warnEl = document.getElementById('batch-warn');
+  const grid = document.getElementById('batch-grid');
 
-  if (n === 0) {
+  if (attendees.length === 0) {
+    warnEl.className = 'warn-box';
     warnEl.style.display = '';
     warnEl.textContent = '참석자가 없습니다. 명단에서 먼저 체크해주세요.';
-    document.getElementById('batch-grid').innerHTML = '';
+    grid.innerHTML = '';
     return;
   }
-  warnEl.style.display = 'none';
 
-  // 카드 읽기 순서: A코스 전원 → B코스 전원 → C코스 전원 → D코스 전원
-  // nums[course*n + personIndex] = 해당 타수
-  const courses = ['A', 'B', 'C', 'D'];
-  const filled = attendees.map((att, j) => {
+  // 매칭된 이름 → 타수
+  const byName = {};
+  for (const p of players) if (p.matched) byName[p.matched] = p;
+
+  // 각 참석자 프리필 (매칭되면 AI 값, 아니면 기존 값)
+  let matchedCount = 0;
+  const filled = attendees.map(att => {
+    const m = byName[att.name];
+    if (m) matchedCount++;
     const vals = {};
-    courses.forEach((c, ci) => {
-      const idx = ci * n + j;
-      vals[c] = (idx < nums.length && nums[idx] >= 20 && nums[idx] <= 60) ? nums[idx] : (att[c] ?? '');
-    });
-    return vals;
+    for (const c of courses) {
+      vals[c] = m && m[c] != null ? m[c] : (att[c] != null ? att[c] : '');
+    }
+    return { ...att, vals, isMatched: !!m };
   });
 
-  const grid = document.getElementById('batch-grid');
-  grid.innerHTML = attendees.map((att, i) => {
-    const v = filled[i];
-    const computedTotal = () => {
-      const vals = ['A','B','C','D'].map(c => parseInt(document.getElementById(`batch-${att.scoreId}-${c}`).value, 10));
-      return vals.every(x => !isNaN(x)) ? vals.reduce((a,b)=>a+b,0) : null;
-    };
-    return `
-      <div class="batch-row" data-score-id="${att.scoreId}">
-        <div class="batch-name">${escHtml(att.name)}</div>
-        <div class="batch-scores">
-          ${courses.map(c => `
-            <div class="batch-cell">
-              <label class="batch-course-label">${c}</label>
-              <input class="batch-score-input" id="batch-${att.scoreId}-${c}" data-sid="${att.scoreId}"
-                type="number" inputmode="numeric" min="1" max="99"
-                value="${v[c] !== '' ? v[c] : ''}" placeholder="–">
-            </div>
-          `).join('')}
-        </div>
-        <div class="batch-total-col">
-          <span class="batch-total-label">합계</span>
-          <span class="batch-total-val" id="batch-total-${att.scoreId}">–</span>
-        </div>
+  grid.innerHTML = filled.map(att => `
+    <div class="batch-row ${att.isMatched ? 'matched' : ''}" data-score-id="${att.scoreId}">
+      <div class="batch-name">${escHtml(att.name)}${att.isMatched ? ' <span class="batch-tag">AI 인식</span>' : ''}</div>
+      <div class="batch-scores">
+        ${courses.map(c => `
+          <div class="batch-cell">
+            <label class="batch-course-label">${c}</label>
+            <input class="batch-score-input" id="batch-${att.scoreId}-${c}" data-sid="${att.scoreId}"
+              type="number" inputmode="numeric" min="1" max="99"
+              value="${att.vals[c] !== '' ? att.vals[c] : ''}" placeholder="–">
+          </div>
+        `).join('')}
       </div>
-    `;
-  }).join('');
+      <div class="batch-total-col">
+        <span class="batch-total-label">합계</span>
+        <span class="batch-total-val" id="batch-total-${att.scoreId}">–</span>
+      </div>
+    </div>
+  `).join('');
 
-  // 합계 실시간 업데이트
   const updateRowTotal = sid => {
     const vals = courses.map(c => parseInt(document.getElementById(`batch-${sid}-${c}`).value, 10));
     const el = document.getElementById(`batch-total-${sid}`);
     if (vals.every(x => !isNaN(x))) {
-      const t = vals.reduce((a,b)=>a+b,0);
+      const t = vals.reduce((a, b) => a + b, 0);
       const diff = t - 132;
       const diffStr = diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`;
       el.textContent = `${t} (${diffStr})`;
@@ -434,20 +459,23 @@ screens['batch-ocr'] = async ({ nums = [] } = {}) => {
       el.className = 'batch-total-val';
     }
   };
-
   grid.querySelectorAll('.batch-score-input').forEach(inp => {
     inp.oninput = () => updateRowTotal(inp.dataset.sid);
     updateRowTotal(inp.dataset.sid);
   });
 
-  // 인식된 숫자 안내
-  if (nums.length > 0) {
-    warnEl.style.display = '';
-    warnEl.style.background = '#e8f5e9';
-    warnEl.style.color = '#2d7a3a';
-    warnEl.style.borderColor = '#2d7a3a';
-    warnEl.textContent = `인식된 숫자 ${nums.length}개: ${nums.join(', ')} — 칸을 직접 수정할 수 있습니다.`;
+  // 안내: 매칭 결과 + 매칭 실패한 인식 이름
+  const attendeeNameSet = new Set(attendees.map(a => a.name));
+  const unmatched = players.filter(p => !p.matched || !attendeeNameSet.has(p.matched));
+  const parts = [`참석자 ${attendees.length}명 중 ${matchedCount}명 자동 입력됨.`];
+  if (unmatched.length > 0) {
+    const raws = unmatched.map(p => p.raw || '?').filter(Boolean).join(', ');
+    parts.push(`매칭 실패: ${raws || unmatched.length + '명'} — 해당 칸은 직접 입력하세요.`);
   }
+  parts.push('값을 확인 후 수정하고 "모두 저장"을 누르세요.');
+  warnEl.className = 'warn-box batch-info';
+  warnEl.style.display = '';
+  warnEl.innerHTML = parts.map(escHtml).join('<br>');
 };
 
 document.getElementById('btn-batch-back').onclick = () => showScreen('score-list');

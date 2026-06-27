@@ -1,11 +1,11 @@
-const CACHE_NAME = 'parkgolf-v4';
+const CACHE_NAME = 'parkgolf-v5';
 const ASSETS = [
   './',
   './index.html',
   './css/style.css',
   './js/app.js',
   './js/db.js',
-  './js/ocr.js',
+  './js/gemini.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
