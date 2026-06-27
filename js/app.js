@@ -278,9 +278,11 @@ async function renderScoreList() {
       showScreen('score-entry');
     };
   });
+
 }
 
 document.getElementById('btn-scorelist-back').onclick = () => showScreen('roster');
+document.getElementById('btn-goto-ranking').onclick = () => showScreen('ranking');
 
 // ────────────────────────────────
 // 화면 4: 점수 입력
@@ -348,6 +350,81 @@ document.getElementById('btn-clear-score').onclick = async () => {
 };
 
 document.getElementById('btn-entry-back').onclick = () => showScreen('score-list');
+
+// ────────────────────────────────
+// 화면 5: 순위 집계
+// ────────────────────────────────
+screens.ranking = async () => {
+  const tournament = await DB.tournament.get(currentTournamentId);
+  document.getElementById('ranking-title').textContent = tournament.name;
+  document.getElementById('ranking-date').textContent = formatDate(tournament.date);
+
+  const scores = await DB.score.getByTournament(currentTournamentId);
+  const allParticipants = await DB.participant.getAll();
+  const pMap = Object.fromEntries(allParticipants.map(p => [p.id, p]));
+
+  // 완료된 점수만 집계, 미완료는 경고
+  const complete = scores.filter(s => s.A !== null && s.B !== null && s.C !== null && s.D !== null);
+  const incomplete = scores.length - complete.length;
+
+  const warnEl = document.getElementById('ranking-incomplete-warn');
+  warnEl.style.display = incomplete > 0 ? '' : 'none';
+
+  // 순위 정렬: 총타수 오름차순, 동점 시 D→C→B→A 백카운트
+  const entries = complete.map(s => ({
+    name: pMap[s.participantId]?.name ?? '알 수 없음',
+    total: s.A + s.B + s.C + s.D,
+    A: s.A, B: s.B, C: s.C, D: s.D
+  }));
+
+  entries.sort((a, b) => {
+    if (a.total !== b.total) return a.total - b.total;
+    if (a.D !== b.D) return a.D - b.D;
+    if (a.C !== b.C) return a.C - b.C;
+    if (a.B !== b.B) return a.B - b.B;
+    return a.A - b.A;
+  });
+
+  // 공동 순위 계산
+  const ranked = entries.map((e, i, arr) => {
+    if (i === 0) return { ...e, rank: 1, tied: false };
+    const prev = arr[i - 1];
+    const sameTie = e.total === prev.total && e.D === prev.D && e.C === prev.C && e.B === prev.B && e.A === prev.A;
+    const prevRank = ranked[i - 1].rank;
+    return { ...e, rank: sameTie ? prevRank : i + 1, tied: sameTie };
+  });
+
+  const container = document.getElementById('ranking-list');
+
+  if (ranked.length === 0) {
+    container.innerHTML = '<p class="empty-msg">입력된 점수가 없습니다.</p>';
+    return;
+  }
+
+  container.innerHTML = ranked.map(e => {
+    const diff = e.total - 132;
+    const diffStr = diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`;
+    const diffClass = diff <= 0 ? 'under' : 'over';
+    const medal = e.rank === 1 ? '🥇' : e.rank === 2 ? '🥈' : e.rank === 3 ? '🥉' : '';
+    const rankLabel = e.tied ? `${e.rank}위 (공동)` : `${e.rank}위`;
+    return `
+      <div class="rank-card rank-${Math.min(e.rank, 4)}">
+        <div class="rank-medal">${medal || e.rank}</div>
+        <div class="rank-info">
+          <div class="rank-name">${escHtml(e.name)}</div>
+          <div class="rank-courses">A ${e.A} · B ${e.B} · C ${e.C} · D ${e.D}</div>
+          <div class="rank-label-text">${rankLabel}</div>
+        </div>
+        <div class="rank-total">
+          <span class="rank-total-num">${e.total}</span>
+          <span class="par-diff ${diffClass}">${diffStr}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+};
+
+document.getElementById('btn-ranking-back').onclick = () => showScreen('score-list');
 
 // ────────────────────────────────
 // 유틸

@@ -363,6 +363,40 @@ body {
   margin-bottom: 14px;
 }
 
+/* ── 순위 카드 ── */
+.rank-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px 14px;
+  margin-bottom: 10px;
+  border-left: 5px solid var(--gray);
+}
+.rank-1 { border-left-color: #FFD700; background: #fffdf0; }
+.rank-2 { border-left-color: #C0C0C0; background: #fafafa; }
+.rank-3 { border-left-color: #CD7F32; background: #fff8f5; }
+
+.rank-medal {
+  font-size: 1.6rem;
+  min-width: 36px;
+  text-align: center;
+  font-weight: 800;
+  color: var(--text-sub);
+  line-height: 1;
+}
+.rank-1 .rank-medal { color: #b8860b; }
+
+.rank-info { flex: 1; min-width: 0; }
+.rank-name { font-size: 1.05rem; font-weight: 700; margin-bottom: 2px; }
+.rank-courses { font-size: 0.8rem; color: var(--text-sub); margin-bottom: 2px; }
+.rank-label-text { font-size: 0.78rem; color: var(--text-sub); font-style: italic; }
+
+.rank-total { text-align: right; flex-shrink: 0; }
+.rank-total-num { display: block; font-size: 1.5rem; font-weight: 800; color: var(--green-dark); line-height: 1.1; }
+
 /* ── 반응형 ── */
 @media (min-width: 520px) {
   .app-header { padding: 18px 24px; }

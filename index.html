@@ -102,6 +102,7 @@
         </div>
       </div>
       <div id="score-list-items" class="card-list"></div>
+      <button id="btn-goto-ranking" class="btn btn-primary btn-lg">🏆 순위 집계 보기</button>
     </div>
   </div>
 
@@ -150,6 +151,23 @@
 
       <button id="btn-save-score" class="btn btn-primary btn-lg">저장</button>
       <button id="btn-clear-score" class="btn btn-secondary btn-lg">입력 초기화</button>
+    </div>
+  </div>
+
+  <!-- ── 화면 6: 순위 집계 ── -->
+  <div id="screen-ranking" class="screen">
+    <div class="screen-body">
+      <div class="section-header">
+        <button id="btn-ranking-back" class="btn-back">← 점수</button>
+        <div>
+          <div class="section-title" id="ranking-title"></div>
+          <div class="section-sub" id="ranking-date"></div>
+        </div>
+      </div>
+      <div id="ranking-incomplete-warn" class="warn-box" style="display:none;">
+        ⚠️ 미입력 참가자가 있습니다. 모두 입력 후 집계하면 정확합니다.
+      </div>
+      <div id="ranking-list"></div>
     </div>
   </div>
 
