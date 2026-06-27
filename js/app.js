@@ -353,15 +353,19 @@ document.getElementById('btn-clear-score').onclick = async () => {
 document.getElementById('btn-entry-back').onclick = () => showScreen('score-list');
 
 // ── OCR ──
-const ocrFileInput = document.getElementById('ocr-file-input');
+const ocrFileCamera = document.getElementById('ocr-file-camera');
+const ocrFileGallery = document.getElementById('ocr-file-gallery');
 const ocrOverlay = document.getElementById('ocr-overlay');
 
-document.getElementById('btn-ocr-photo').onclick = () => ocrFileInput.click();
+document.getElementById('btn-ocr-camera').onclick = () => ocrFileCamera.click();
+document.getElementById('btn-ocr-gallery').onclick = () => ocrFileGallery.click();
+ocrFileCamera.onchange = () => handleOcrFile(ocrFileCamera);
+ocrFileGallery.onchange = () => handleOcrFile(ocrFileGallery);
 
-ocrFileInput.onchange = async () => {
-  const file = ocrFileInput.files[0];
+async function handleOcrFile(input) {
+  const file = input.files[0];
   if (!file) return;
-  ocrFileInput.value = '';
+  input.value = '';
 
   // 진행 오버레이 표시
   const statusEl = document.getElementById('ocr-status');
@@ -374,6 +378,7 @@ ocrFileInput.onchange = async () => {
 
   try {
     const nums = await extractScores(file, pct => {
+
       statusEl.textContent = '숫자 인식 중...';
       barEl.style.width = pct + '%';
       pctEl.textContent = pct + '%';
