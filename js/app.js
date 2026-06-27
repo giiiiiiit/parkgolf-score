@@ -1,5 +1,6 @@
 'use strict';
 import { DB } from './db.js';
+import { extractScores } from './ocr.js';
 
 // ── Service Worker ──
 if ('serviceWorker' in navigator) {
@@ -350,6 +351,79 @@ document.getElementById('btn-clear-score').onclick = async () => {
 };
 
 document.getElementById('btn-entry-back').onclick = () => showScreen('score-list');
+
+// ── OCR ──
+const ocrFileInput = document.getElementById('ocr-file-input');
+const ocrOverlay = document.getElementById('ocr-overlay');
+
+document.getElementById('btn-ocr-photo').onclick = () => ocrFileInput.click();
+
+ocrFileInput.onchange = async () => {
+  const file = ocrFileInput.files[0];
+  if (!file) return;
+  ocrFileInput.value = '';
+
+  // 진행 오버레이 표시
+  const statusEl = document.getElementById('ocr-status');
+  const barEl = document.getElementById('ocr-bar');
+  const pctEl = document.getElementById('ocr-pct');
+  ocrOverlay.style.display = 'flex';
+  statusEl.textContent = 'OCR 준비 중... (첫 실행은 다운로드가 필요합니다)';
+  barEl.style.width = '0%';
+  pctEl.textContent = '0%';
+
+  try {
+    const nums = await extractScores(file, pct => {
+      statusEl.textContent = '숫자 인식 중...';
+      barEl.style.width = pct + '%';
+      pctEl.textContent = pct + '%';
+    });
+    ocrOverlay.style.display = 'none';
+
+    if (nums.length === 0) {
+      toast('숫자를 인식하지 못했습니다. 더 밝고 정면으로 촬영해보세요.');
+      return;
+    }
+
+    showOcrCandidates(nums);
+  } catch (err) {
+    ocrOverlay.style.display = 'none';
+    toast(err.message || 'OCR 오류가 발생했습니다.');
+  }
+};
+
+function showOcrCandidates(nums) {
+  const box = document.getElementById('ocr-candidates-box');
+  const grid = document.getElementById('ocr-candidates');
+  box.style.display = '';
+
+  // 중복 제거 후 최대 8개 표시
+  const unique = [...new Set(nums)].slice(0, 8);
+  let nextCourse = 0;
+  const courses = ['A', 'B', 'C', 'D'];
+
+  grid.innerHTML = unique.map(n => `
+    <button class="candidate-chip" data-num="${n}">${n}</button>
+  `).join('');
+
+  grid.querySelectorAll('.candidate-chip').forEach(chip => {
+    chip.onclick = () => {
+      if (nextCourse >= 4) return;
+      const course = courses[nextCourse];
+      document.getElementById('score-' + course).value = chip.dataset.num;
+      chip.classList.add('used');
+      chip.disabled = true;
+      nextCourse++;
+      updateTotalDisplay();
+      if (nextCourse === 4) {
+        box.style.display = 'none';
+        toast('4개 코스가 모두 채워졌습니다. 확인 후 저장하세요.');
+      }
+    };
+  });
+
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
 
 // ────────────────────────────────
 // 화면 5: 순위 집계

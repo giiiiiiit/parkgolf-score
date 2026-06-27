@@ -397,6 +397,91 @@ body {
 .rank-total { text-align: right; flex-shrink: 0; }
 .rank-total-num { display: block; font-size: 1.5rem; font-weight: 800; color: var(--green-dark); line-height: 1.1; }
 
+/* ── OCR 카드 ── */
+.ocr-card { border-left: 4px solid var(--green-light); }
+.ocr-badge {
+  font-size: 0.7rem;
+  background: var(--green-light);
+  color: var(--white);
+  border-radius: 4px;
+  padding: 2px 6px;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+.ocr-hint {
+  font-size: 0.85rem;
+  color: var(--text-sub);
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+/* ── 후보 숫자 그리드 ── */
+.candidate-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+.candidate-chip {
+  padding: 12px 18px;
+  border: 2px solid var(--green);
+  border-radius: 10px;
+  background: var(--white);
+  color: var(--green-dark);
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.candidate-chip:active { background: #e8f5e9; }
+.candidate-chip.used {
+  border-color: var(--gray);
+  color: var(--gray-mid);
+  text-decoration: line-through;
+}
+
+/* ── OCR 진행 오버레이 ── */
+.ocr-progress-box {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 28px 24px;
+  width: 100%;
+  max-width: 320px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+.ocr-spinner {
+  width: 40px; height: 40px;
+  border: 4px solid var(--gray);
+  border-top-color: var(--green);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 16px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+#ocr-status {
+  font-size: 0.9rem;
+  color: var(--text-sub);
+  margin-bottom: 14px;
+  line-height: 1.4;
+}
+.ocr-bar-wrap {
+  background: var(--gray);
+  border-radius: 10px;
+  height: 8px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.ocr-bar {
+  height: 100%;
+  background: var(--green);
+  border-radius: 10px;
+  transition: width 0.2s;
+  width: 0%;
+}
+#ocr-pct { font-size: 0.85rem; color: var(--text-sub); font-weight: 600; }
+
 /* ── 내보내기 버튼 행 ── */
 .export-row {
   display: flex;
