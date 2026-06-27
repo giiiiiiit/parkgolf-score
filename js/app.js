@@ -426,6 +426,93 @@ screens.ranking = async () => {
 
 document.getElementById('btn-ranking-back').onclick = () => showScreen('score-list');
 
+// ── 내보내기 공통: 현재 순위 데이터 수집 ──
+async function getRankedEntries() {
+  const scores = await DB.score.getByTournament(currentTournamentId);
+  const allParticipants = await DB.participant.getAll();
+  const pMap = Object.fromEntries(allParticipants.map(p => [p.id, p]));
+  const complete = scores.filter(s => s.A !== null && s.B !== null && s.C !== null && s.D !== null);
+  const entries = complete.map(s => ({
+    name: pMap[s.participantId]?.name ?? '알 수 없음',
+    total: s.A + s.B + s.C + s.D,
+    A: s.A, B: s.B, C: s.C, D: s.D
+  }));
+  entries.sort((a, b) => {
+    if (a.total !== b.total) return a.total - b.total;
+    if (a.D !== b.D) return a.D - b.D;
+    if (a.C !== b.C) return a.C - b.C;
+    if (a.B !== b.B) return a.B - b.B;
+    return a.A - b.A;
+  });
+  let rank = 1;
+  return entries.map((e, i, arr) => {
+    if (i > 0) {
+      const p = arr[i - 1];
+      const tied = e.total === p.total && e.D === p.D && e.C === p.C && e.B === p.B && e.A === p.A;
+      if (!tied) rank = i + 1;
+    }
+    return { ...e, rank };
+  });
+}
+
+// ── CSV 내보내기 ──
+document.getElementById('btn-export-csv').onclick = async () => {
+  const tournament = await DB.tournament.get(currentTournamentId);
+  const ranked = await getRankedEntries();
+  if (ranked.length === 0) { toast('집계된 점수가 없습니다'); return; }
+
+  const BOM = '﻿'; // 엑셀 한글 깨짐 방지
+  const header = ['순위', '이름', '합계', 'A코스', 'B코스', 'C코스', 'D코스'];
+  const rows = ranked.map(e => [e.rank, e.name, e.total, e.A, e.B, e.C, e.D]);
+  const csv = BOM + [header, ...rows].map(r => r.join(',')).join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeName = tournament.name.replace(/[^\w가-힣]/g, '_');
+  a.href = url;
+  a.download = `${safeName}_순위.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('CSV 저장 완료');
+};
+
+// ── 결과 공유 ──
+document.getElementById('btn-share').onclick = async () => {
+  const tournament = await DB.tournament.get(currentTournamentId);
+  const ranked = await getRankedEntries();
+  if (ranked.length === 0) { toast('집계된 점수가 없습니다'); return; }
+
+  const lines = [
+    `⛳ ${tournament.name} 순위 결과`,
+    `📅 ${formatDate(tournament.date)}`,
+    `PAR 132`,
+    '',
+    ...ranked.map(e => {
+      const diff = e.total - 132;
+      const diffStr = diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`;
+      return `${e.rank}위 ${e.name}  ${e.total}타 (${diffStr})  A${e.A}·B${e.B}·C${e.C}·D${e.D}`;
+    })
+  ];
+  const text = lines.join('\n');
+
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: tournament.name + ' 순위', text });
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return; // 사용자가 취소
+    }
+  }
+  // 폴백: 클립보드 복사
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('클립보드에 복사됐습니다');
+  } catch {
+    toast('공유 기능을 지원하지 않는 환경입니다');
+  }
+};
+
 // ────────────────────────────────
 // 유틸
 // ────────────────────────────────

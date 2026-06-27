@@ -397,6 +397,18 @@ body {
 .rank-total { text-align: right; flex-shrink: 0; }
 .rank-total-num { display: block; font-size: 1.5rem; font-weight: 800; color: var(--green-dark); line-height: 1.1; }
 
+/* ── 내보내기 버튼 행 ── */
+.export-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+.export-btn {
+  flex: 1;
+  padding: 16px 10px;
+  font-size: 0.95rem;
+}
+
 /* ── 반응형 ── */
 @media (min-width: 520px) {
   .app-header { padding: 18px 24px; }
