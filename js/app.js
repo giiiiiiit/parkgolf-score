@@ -48,30 +48,61 @@ function confirm(msg) {
   });
 }
 
-// ── 이름 수정 다이얼로그 ──
-let _editNameResolve = null;
+// ── 성별 공통 헬퍼 ──
+function setToggleActive(container, g) {
+  container.querySelectorAll('.gender-opt').forEach(b =>
+    b.classList.toggle('active', b.dataset.g === g));
+}
+function genderBadge(g) {
+  const gg = g || '미지정';
+  const cls = gg === '남' ? 'g-m' : gg === '여' ? 'g-f' : 'g-u';
+  return `<span class="gender-badge ${cls}">${gg}</span>`;
+}
+
+// ── 이름·성별 수정 다이얼로그 ──
+let _editResolve = null;
+const editToggle = document.getElementById('edit-gender-toggle');
+editToggle.querySelectorAll('.gender-opt').forEach(b => {
+  b.onclick = () => setToggleActive(editToggle, b.dataset.g);
+});
 document.getElementById('modal-edit-save').onclick = () => {
   const val = document.getElementById('input-edit-name').value.trim();
+  const g = editToggle.querySelector('.gender-opt.active')?.dataset.g || '미지정';
   document.getElementById('modal-edit-name').classList.remove('show');
-  if (_editNameResolve) { _editNameResolve(val || null); _editNameResolve = null; }
+  if (_editResolve) { _editResolve(val ? { name: val, gender: g } : null); _editResolve = null; }
 };
 document.getElementById('modal-edit-cancel').onclick = () => {
   document.getElementById('modal-edit-name').classList.remove('show');
-  if (_editNameResolve) { _editNameResolve(null); _editNameResolve = null; }
+  if (_editResolve) { _editResolve(null); _editResolve = null; }
 };
 document.getElementById('input-edit-name').addEventListener('keydown', e => {
   if (e.key === 'Enter') document.getElementById('modal-edit-save').click();
 });
 
-function promptEditName(currentName) {
+function promptEditParticipant(currentName, currentGender) {
   return new Promise(resolve => {
-    _editNameResolve = resolve;
+    _editResolve = resolve;
     const inp = document.getElementById('input-edit-name');
     inp.value = currentName;
+    setToggleActive(editToggle, currentGender || '미지정');
     document.getElementById('modal-edit-name').classList.add('show');
     setTimeout(() => inp.focus(), 50);
   });
 }
+
+// ── 명단 정렬 · 참가자 추가 성별 상태 ──
+let rosterSort = 'registered';   // 'registered' | 'name'
+let addGender = '남';
+const addToggle = document.getElementById('add-gender-toggle');
+addToggle.querySelectorAll('.gender-opt').forEach(b => {
+  b.onclick = () => { addGender = b.dataset.g; setToggleActive(addToggle, addGender); };
+});
+document.getElementById('btn-sort-roster').onclick = () => {
+  rosterSort = rosterSort === 'registered' ? 'name' : 'registered';
+  document.getElementById('btn-sort-roster').textContent =
+    rosterSort === 'name' ? '등록순 ↓' : '가나다순 ↓';
+  renderRoster();
+};
 
 // ── 진행 오버레이 ──
 const ocrOverlay = document.getElementById('ocr-overlay');
@@ -83,6 +114,8 @@ function setOcrStatus(msg) { document.getElementById('ocr-status').textContent =
 function hideOcrOverlay() { ocrOverlay.style.display = 'none'; }
 
 // ── 설정 (Gemini API 키) ──
+// [수동 전환] OCR 비활성화로 설정 버튼(#btn-settings) 숨김. 재활성화 시 아래 주석 해제.
+/*
 function openSettings() {
   document.getElementById('input-api-key').value = getApiKey();
   document.getElementById('modal-settings').classList.add('show');
@@ -101,6 +134,7 @@ document.getElementById('modal-settings-clear').onclick = () => {
   document.getElementById('input-api-key').value = '';
   toast('저장된 키를 삭제했습니다');
 };
+*/
 
 // ────────────────────────────────
 // 화면 1: 홈
@@ -175,7 +209,10 @@ screens.roster = async () => {
 };
 
 async function renderRoster() {
-  const all = await DB.participant.getAll();
+  let all = await DB.participant.getAll();
+  if (rosterSort === 'name') all = [...all].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  else all = [...all].sort((a, b) => a.id - b.id);
+
   const scores = await DB.score.getByTournament(currentTournamentId);
   const attendIds = new Set(scores.map(s => s.participantId));
   const list = document.getElementById('participant-list');
@@ -190,9 +227,10 @@ async function renderRoster() {
           <label class="attend-label">
             <input type="checkbox" class="attend-check" data-id="${p.id}" ${checked}>
             <span class="p-name">${escHtml(p.name)}</span>
+            ${genderBadge(p.gender)}
           </label>
           <div class="p-actions">
-            <button class="btn-icon btn-edit-p" data-id="${p.id}" data-name="${escHtml(p.name)}" title="이름 수정">✏️</button>
+            <button class="btn-icon btn-edit-p" data-id="${p.id}" title="이름·성별 수정">✏️</button>
             <button class="btn-icon btn-del-p" data-id="${p.id}" title="삭제">🗑</button>
           </div>
         </div>
@@ -242,18 +280,19 @@ async function renderRoster() {
     };
   });
 
-  // ✏️ 이름 수정
+  // ✏️ 이름·성별 수정
   list.querySelectorAll('.btn-edit-p').forEach(btn => {
     btn.onclick = async () => {
       const pid = Number(btn.dataset.id);
-      const oldName = btn.dataset.name;
-      const newName = await promptEditName(oldName);
-      if (!newName || newName === oldName) return;
-      const all2 = await DB.participant.getAll();
-      if (all2.some(p => p.name === newName)) { toast('이미 사용 중인 이름입니다'); return; }
       const p = await DB.participant.get(pid);
-      await DB.participant.update({ ...p, name: newName });
-      toast('이름을 수정했습니다');
+      const res = await promptEditParticipant(p.name, p.gender || '미지정');
+      if (!res) return;
+      if (res.name !== p.name) {
+        const all2 = await DB.participant.getAll();
+        if (all2.some(x => x.id !== pid && x.name === res.name)) { toast('이미 사용 중인 이름입니다'); return; }
+      }
+      await DB.participant.update({ ...p, name: res.name, gender: res.gender });
+      toast('수정했습니다');
       await renderRoster();
     };
   });
@@ -281,9 +320,9 @@ document.getElementById('form-add-participant').onsubmit = async e => {
   if (!name) return;
   const all = await DB.participant.getAll();
   if (all.some(p => p.name === name)) { toast('이미 등록된 이름입니다'); return; }
-  await DB.participant.add({ name });
+  await DB.participant.add({ name, gender: addGender });
   document.getElementById('input-participant-name').value = '';
-  toast(`${name} 추가됨`);
+  toast(`${name}(${addGender}) 추가됨`);
   await renderRoster();
 };
 
@@ -318,7 +357,7 @@ async function renderScoreList() {
     return `
       <div class="score-list-card ${done ? 'done' : 'pending'}" data-score-id="${s.id}" data-p-name="${escHtml(p.name)}">
         <div class="slc-info">
-          <div class="slc-name">${escHtml(p.name)}</div>
+          <div class="slc-name">${escHtml(p.name)} ${genderBadge(p.gender)}</div>
           ${done
             ? `<div class="slc-score">${s.A} · ${s.B} · ${s.C} · ${s.D} = <strong>${total}</strong> ${parDiffStr(total)}</div>`
             : `<div class="slc-score pending-label">미입력</div>`}
@@ -341,6 +380,9 @@ document.getElementById('btn-scorelist-back').onclick = () => showScreen('roster
 document.getElementById('btn-goto-ranking').onclick = () => showScreen('ranking');
 
 // ── 일괄 카드 OCR 버튼 (점수목록 화면) ──
+// [수동 전환] 카드 사진 인식(OCR) 임시 비활성화 — 수동 입력 사용.
+// 재활성화하려면 index.html의 OCR 카드/설정 버튼 주석과 아래 블록을 함께 해제하세요.
+/*
 document.getElementById('btn-batch-camera').onclick = () => document.getElementById('batch-file-camera').click();
 document.getElementById('btn-batch-gallery').onclick = () => document.getElementById('batch-file-gallery').click();
 document.getElementById('batch-file-camera').onchange = () => handleBatchOcr(document.getElementById('batch-file-camera'));
@@ -381,6 +423,7 @@ async function handleBatchOcr(input) {
     toast(err.message || '분석 오류가 발생했습니다.');
   }
 }
+*/
 
 // ────────────────────────────────
 // 화면 7: 일괄 OCR 입력
@@ -561,6 +604,9 @@ document.getElementById('btn-entry-back').onclick = () => showScreen('score-list
 // ────────────────────────────────
 // 화면 5: 순위 집계
 // ────────────────────────────────
+let rankingTab = '전체';    // '전체' | '남' | '여'
+let _lastRanked = [];
+
 screens.ranking = async () => {
   const tournament = await DB.tournament.get(currentTournamentId);
   document.getElementById('ranking-title').textContent = tournament.name;
@@ -576,6 +622,7 @@ screens.ranking = async () => {
 
   const entries = complete.map(s => ({
     name: pMap[s.participantId]?.name ?? '알 수 없음',
+    gender: pMap[s.participantId]?.gender || '미지정',
     total: s.A + s.B + s.C + s.D, A: s.A, B: s.B, C: s.C, D: s.D
   }));
 
@@ -596,13 +643,27 @@ screens.ranking = async () => {
     ranked.push({ ...e, rank: sameTie ? ranked[i - 1].rank : i + 1, tied: sameTie });
   }
 
+  // 전체 순위 계산 결과를 저장 → 탭 전환 시 재계산 없이 필터만
+  _lastRanked = ranked;
+  rankingTab = '전체';
+  document.querySelectorAll('#rank-tabs .rank-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.g === '전체'));
+  renderRankingList();
+};
+
+// 현재 탭 기준으로 순위 목록 렌더 (등수는 전체 기준 유지)
+function renderRankingList() {
   const container = document.getElementById('ranking-list');
-  if (ranked.length === 0) {
-    container.innerHTML = '<p class="empty-msg">입력된 점수가 없습니다.</p>';
+  const list = rankingTab === '전체'
+    ? _lastRanked
+    : _lastRanked.filter(e => (e.gender || '미지정') === rankingTab);
+
+  if (list.length === 0) {
+    container.innerHTML = `<p class="empty-msg">${rankingTab === '전체' ? '입력된 점수가 없습니다.' : '해당 성별의 집계 결과가 없습니다.'}</p>`;
     return;
   }
 
-  container.innerHTML = ranked.map(e => {
+  container.innerHTML = list.map(e => {
     const diff = e.total - 132;
     const diffStr = diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`;
     const diffClass = diff <= 0 ? 'under' : 'over';
@@ -612,7 +673,7 @@ screens.ranking = async () => {
       <div class="rank-card rank-${Math.min(e.rank, 4)}">
         <div class="rank-medal">${medal || e.rank}</div>
         <div class="rank-info">
-          <div class="rank-name">${escHtml(e.name)}</div>
+          <div class="rank-name">${escHtml(e.name)} ${genderBadge(e.gender)}</div>
           <div class="rank-courses">A ${e.A} · B ${e.B} · C ${e.C} · D ${e.D}</div>
           <div class="rank-label-text">${rankLabel}</div>
         </div>
@@ -623,7 +684,15 @@ screens.ranking = async () => {
       </div>
     `;
   }).join('');
-};
+}
+
+document.querySelectorAll('#rank-tabs .rank-tab').forEach(tab => {
+  tab.onclick = () => {
+    rankingTab = tab.dataset.g;
+    document.querySelectorAll('#rank-tabs .rank-tab').forEach(t => t.classList.toggle('active', t === tab));
+    renderRankingList();
+  };
+});
 
 document.getElementById('btn-ranking-back').onclick = () => showScreen('score-list');
 
@@ -635,6 +704,7 @@ async function getRankedEntries() {
   const complete = scores.filter(s => s.A !== null && s.B !== null && s.C !== null && s.D !== null);
   const entries = complete.map(s => ({
     name: pMap[s.participantId]?.name ?? '알 수 없음',
+    gender: pMap[s.participantId]?.gender || '미지정',
     total: s.A + s.B + s.C + s.D, A: s.A, B: s.B, C: s.C, D: s.D
   }));
   entries.sort((a, b) => {
@@ -659,8 +729,8 @@ document.getElementById('btn-export-csv').onclick = async () => {
   const ranked = await getRankedEntries();
   if (ranked.length === 0) { toast('집계된 점수가 없습니다'); return; }
   const BOM = '﻿';
-  const header = ['순위','이름','합계','A코스','B코스','C코스','D코스'];
-  const rows = ranked.map(e => [e.rank, e.name, e.total, e.A, e.B, e.C, e.D]);
+  const header = ['순위','이름','성별','합계','A코스','B코스','C코스','D코스'];
+  const rows = ranked.map(e => [e.rank, e.name, e.gender, e.total, e.A, e.B, e.C, e.D]);
   const csv = BOM + [header, ...rows].map(r => r.join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -679,7 +749,7 @@ document.getElementById('btn-share').onclick = async () => {
     ...ranked.map(e => {
       const diff = e.total - 132;
       const diffStr = diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`;
-      return `${e.rank}위 ${e.name}  ${e.total}타 (${diffStr})  A${e.A}·B${e.B}·C${e.C}·D${e.D}`;
+      return `${e.rank}위 ${e.name}(${e.gender})  ${e.total}타 (${diffStr})  A${e.A}·B${e.B}·C${e.C}·D${e.D}`;
     })
   ];
   const text = lines.join('\n');

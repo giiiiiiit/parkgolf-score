@@ -4,7 +4,8 @@
       "Bash(pdftotext -layout parkgolf_spec_v1.pdf -)",
       "Bash(python3 -c ' *)",
       "Bash(pip install *)",
-      "Bash(pip3 install *)"
+      "Bash(pip3 install *)",
+      "mcp__Claude_Preview__preview_start"
     ]
   }
 }

@@ -613,3 +613,87 @@ body {
   color: var(--green-dark);
   border-color: var(--green);
 }
+
+/* ── 전체 볼드체 ── */
+* { font-weight: 700 !important; }
+
+/* ── 카드 제목 + 정렬 버튼 행 ── */
+.card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.card-title-row .card-title { margin-bottom: 0; }
+.btn-sort {
+  background: var(--gray-light);
+  border: 1.5px solid var(--gray);
+  color: var(--green-dark);
+  font-size: 0.82rem;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.btn-sort:active { background: var(--gray); }
+
+/* ── 성별 토글 (세그먼트) ── */
+.gender-toggle {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.gender-opt {
+  flex: 1;
+  padding: 10px 0;
+  border: 1.5px solid var(--gray);
+  border-radius: 10px;
+  background: var(--white);
+  color: var(--text-sub);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.gender-opt.active {
+  background: var(--green);
+  color: var(--white);
+  border-color: var(--green);
+}
+
+/* ── 성별 배지 ── */
+.gender-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  padding: 2px 7px;
+  border-radius: 6px;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+.gender-badge.g-m { background: #e3f0fc; color: #1565c0; }
+.gender-badge.g-f { background: #fde8ef; color: #c2185b; }
+.gender-badge.g-u { background: var(--gray); color: var(--text-sub); }
+
+/* ── 순위 성별 탭 ── */
+.rank-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  background: var(--gray);
+  padding: 4px;
+  border-radius: 12px;
+}
+.rank-tab {
+  flex: 1;
+  padding: 10px 0;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-sub);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.rank-tab.active {
+  background: var(--white);
+  color: var(--green-dark);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+}

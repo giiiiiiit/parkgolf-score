@@ -53,7 +53,7 @@ export const DB = {
     delete: id => tx('tournaments', 'readwrite', s => s.delete(id)),
   },
   participant: {
-    add: data => tx('participants', 'readwrite', s => s.add({ ...data, group: null })),
+    add: data => tx('participants', 'readwrite', s => s.add({ ...data })),
     getAll: () => tx('participants', 'readonly', s => s.getAll()),
     get: id => tx('participants', 'readonly', s => s.get(id)),
     update: data => tx('participants', 'readwrite', s => s.put(data)),
