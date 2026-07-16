@@ -70,10 +70,10 @@
       </div>
       <div class="card">
         <div class="card-title-row">
-          <span class="card-title">참가자 명단</span>
+          <span class="card-title" id="roster-count-title">참가자 명단</span>
           <button id="btn-sort-roster" class="btn-sort" type="button">가나다순 ↓</button>
         </div>
-        <div class="attend-hint">체크 = 오늘 대회 참석 &nbsp;|&nbsp; ✏️ = 이름·성별 수정</div>
+        <div class="attend-hint">체크 = 참석 &nbsp;|&nbsp; 체크 시 조 선택 &nbsp;|&nbsp; ✏️ = 이름·성별 수정</div>
         <div id="participant-list" class="participant-list"></div>
       </div>
       <div class="card">
@@ -171,6 +171,7 @@
         <button class="rank-tab active" type="button" data-g="전체">전체</button>
         <button class="rank-tab" type="button" data-g="남">남</button>
         <button class="rank-tab" type="button" data-g="여">여</button>
+        <button class="rank-tab" type="button" data-g="팀">팀</button>
       </div>
       <div id="ranking-list"></div>
       <div class="export-row">
@@ -180,16 +181,15 @@
     </div>
   </div>
 
-  <!-- ── 화면 7: 일괄 OCR 입력 ── -->
-  <div id="screen-batch-ocr" class="screen">
+  <!-- ── 화면 7: 조별 점수 입력 ── -->
+  <div id="screen-team-entry" class="screen">
     <div class="screen-body">
       <div class="section-header">
-        <button id="btn-batch-back" class="btn-back">← 점수목록</button>
-        <div class="section-title">카드 전체 입력</div>
+        <button id="btn-team-back" class="btn-back">← 조 목록</button>
+        <div class="section-title" id="team-entry-title"></div>
       </div>
-      <div id="batch-warn" class="warn-box" style="display:none;"></div>
-      <div id="batch-grid" class="batch-grid"></div>
-      <button id="btn-batch-save" class="btn btn-primary btn-lg">모두 저장</button>
+      <div id="team-grid" class="batch-grid"></div>
+      <button id="btn-team-save" class="btn btn-primary btn-lg">저장</button>
     </div>
   </div>
 

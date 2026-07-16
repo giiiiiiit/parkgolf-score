@@ -14,6 +14,7 @@ const screens = {};
 let currentTournamentId = null;
 let currentScoreId = null;
 let currentParticipantName = '';
+let currentTeam = null;          // 현재 입력 중인 조 번호 (0 = 미배정)
 
 function showScreen(name, data = {}) {
   document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
@@ -45,6 +46,24 @@ function confirm(msg) {
     };
     yes.onclick = () => cleanup(true);
     no.onclick = () => cleanup(false);
+  });
+}
+
+// ── 알림 다이얼로그 (확인 버튼만) ──
+function alertBox(msg) {
+  return new Promise(resolve => {
+    const modal = document.getElementById('modal-confirm');
+    document.getElementById('modal-msg').textContent = msg;
+    const yes = document.getElementById('modal-yes');
+    const no = document.getElementById('modal-no');
+    no.style.display = 'none';
+    modal.classList.add('show');
+    yes.onclick = () => {
+      modal.classList.remove('show');
+      no.style.display = '';   // confirm() 재사용 위해 복원
+      yes.onclick = null;
+      resolve();
+    };
   });
 }
 
@@ -208,27 +227,38 @@ screens.roster = async () => {
   await renderRoster();
 };
 
+const TEAM_MAX = 12;   // 조 선택 최대 개수
+let lastTeam = 1;      // 직전 배정 조 (연속 체크 편의)
+
 async function renderRoster() {
   let all = await DB.participant.getAll();
   if (rosterSort === 'name') all = [...all].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
   else all = [...all].sort((a, b) => a.id - b.id);
 
   const scores = await DB.score.getByTournament(currentTournamentId);
-  const attendIds = new Set(scores.map(s => s.participantId));
+  const scoreByPid = Object.fromEntries(scores.map(s => [s.participantId, s]));
   const list = document.getElementById('participant-list');
+
+  document.getElementById('roster-count-title').textContent = `참가자 명단 (총 ${all.length}명)`;
 
   if (all.length === 0) {
     list.innerHTML = '<p class="empty-msg">참가자를 추가해주세요</p>';
   } else {
-    list.innerHTML = all.map(p => {
-      const checked = attendIds.has(p.id) ? 'checked' : '';
+    list.innerHTML = all.map((p, i) => {
+      const sc = scoreByPid[p.id];
+      const attending = !!sc;
+      const team = sc?.team ?? lastTeam;
+      const teamOpts = Array.from({ length: TEAM_MAX }, (_, k) => k + 1)
+        .map(n => `<option value="${n}" ${team === n ? 'selected' : ''}>${n}조</option>`).join('');
       return `
         <div class="participant-row" data-id="${p.id}">
+          <span class="p-no">${i + 1}</span>
           <label class="attend-label">
-            <input type="checkbox" class="attend-check" data-id="${p.id}" ${checked}>
+            <input type="checkbox" class="attend-check" data-id="${p.id}" ${attending ? 'checked' : ''}>
             <span class="p-name">${escHtml(p.name)}</span>
             ${genderBadge(p.gender)}
           </label>
+          <select class="team-select" data-id="${p.id}" ${attending ? '' : 'style="display:none;"'}>${teamOpts}</select>
           <div class="p-actions">
             <button class="btn-icon btn-edit-p" data-id="${p.id}" title="이름·성별 수정">✏️</button>
             <button class="btn-icon btn-del-p" data-id="${p.id}" title="삭제">🗑</button>
@@ -246,24 +276,27 @@ async function renderRoster() {
     list.parentElement.after(gotoBtn);
   }
   gotoBtn.onclick = () => showScreen('score-list');
-  if (attendIds.size > 0) {
-    gotoBtn.textContent = `점수 입력하기 (${attendIds.size}명)`;
-    gotoBtn.style.display = '';
-  } else {
-    gotoBtn.style.display = 'none';
-  }
+  const updateGoto = () => {
+    const cnt = scores.length;
+    gotoBtn.textContent = `점수 입력하기 (${cnt}명)`;
+    gotoBtn.style.display = cnt > 0 ? '' : 'none';
+  };
+  updateGoto();
 
   list.querySelectorAll('.attend-check').forEach(cb => {
     cb.onchange = async () => {
       const pid = Number(cb.dataset.id);
+      const sel = list.querySelector(`.team-select[data-id="${pid}"]`);
       if (cb.checked) {
         const existing = scores.find(s => s.participantId === pid);
         if (!existing) {
-          const newScore = { tournamentId: currentTournamentId, participantId: pid, A: null, B: null, C: null, D: null, total: null, source: null };
+          const team = Number(sel?.value || lastTeam);
+          lastTeam = team;
+          const newScore = { tournamentId: currentTournamentId, participantId: pid, team, A: null, B: null, C: null, D: null, total: null };
           const id = await DB.score.add(newScore);
           scores.push({ ...newScore, id });
-          attendIds.add(pid);
         }
+        if (sel) sel.style.display = '';
       } else {
         const existing = scores.find(s => s.participantId === pid);
         if (existing) {
@@ -271,12 +304,23 @@ async function renderRoster() {
           if (!ok) { cb.checked = true; return; }
           await DB.score.delete(existing.id);
           scores.splice(scores.indexOf(existing), 1);
-          attendIds.delete(pid);
         }
+        if (sel) sel.style.display = 'none';
       }
-      const cnt = attendIds.size;
-      gotoBtn.textContent = `점수 입력하기 (${cnt}명)`;
-      gotoBtn.style.display = cnt > 0 ? '' : 'none';
+      updateGoto();
+    };
+  });
+
+  // 조 변경
+  list.querySelectorAll('.team-select').forEach(sel => {
+    sel.onchange = async () => {
+      const pid = Number(sel.dataset.id);
+      const existing = scores.find(s => s.participantId === pid);
+      if (existing) {
+        existing.team = Number(sel.value);
+        lastTeam = existing.team;
+        await DB.score.update(existing);
+      }
     };
   });
 
@@ -289,7 +333,7 @@ async function renderRoster() {
       if (!res) return;
       if (res.name !== p.name) {
         const all2 = await DB.participant.getAll();
-        if (all2.some(x => x.id !== pid && x.name === res.name)) { toast('이미 사용 중인 이름입니다'); return; }
+        if (all2.some(x => x.id !== pid && x.name === res.name)) { await alertBox('이미 등록된 이름입니다.'); return; }
       }
       await DB.participant.update({ ...p, name: res.name, gender: res.gender });
       toast('수정했습니다');
@@ -319,7 +363,7 @@ document.getElementById('form-add-participant').onsubmit = async e => {
   const name = document.getElementById('input-participant-name').value.trim();
   if (!name) return;
   const all = await DB.participant.getAll();
-  if (all.some(p => p.name === name)) { toast('이미 등록된 이름입니다'); return; }
+  if (all.some(p => p.name === name)) { await alertBox('이미 등록된 이름입니다.'); return; }
   await DB.participant.add({ name, gender: addGender });
   document.getElementById('input-participant-name').value = '';
   toast(`${name}(${addGender}) 추가됨`);
@@ -338,6 +382,8 @@ screens['score-list'] = async () => {
   await renderScoreList();
 };
 
+function teamLabel(t) { return t === 0 ? '미배정' : `${t}조`; }
+
 async function renderScoreList() {
   const scores = await DB.score.getByTournament(currentTournamentId);
   const allParticipants = await DB.participant.getAll();
@@ -349,29 +395,35 @@ async function renderScoreList() {
     return;
   }
 
-  container.innerHTML = scores.map(s => {
-    const p = pMap[s.participantId];
-    if (!p) return '';
-    const done = s.A !== null && s.B !== null && s.C !== null && s.D !== null;
-    const total = done ? s.A + s.B + s.C + s.D : null;
+  // 조별 그룹핑
+  const teams = {};
+  for (const s of scores) {
+    const t = s.team ?? 0;
+    (teams[t] = teams[t] || []).push(s);
+  }
+  const teamNums = Object.keys(teams).map(Number).sort((a, b) => a - b);
+
+  container.innerHTML = teamNums.map(t => {
+    const members = teams[t].slice().sort((a, b) =>
+      (pMap[a.participantId]?.name || '').localeCompare(pMap[b.participantId]?.name || '', 'ko'));
+    const doneCount = members.filter(s => s.A !== null && s.B !== null && s.C !== null && s.D !== null).length;
+    const allDone = doneCount === members.length;
+    const names = members.map(s => escHtml(pMap[s.participantId]?.name ?? '?')).join(', ');
     return `
-      <div class="score-list-card ${done ? 'done' : 'pending'}" data-score-id="${s.id}" data-p-name="${escHtml(p.name)}">
+      <div class="score-list-card ${allDone ? 'done' : 'pending'}" data-team="${t}">
         <div class="slc-info">
-          <div class="slc-name">${escHtml(p.name)} ${genderBadge(p.gender)}</div>
-          ${done
-            ? `<div class="slc-score">${s.A} · ${s.B} · ${s.C} · ${s.D} = <strong>${total}</strong> ${parDiffStr(total)}</div>`
-            : `<div class="slc-score pending-label">미입력</div>`}
+          <div class="slc-name">${teamLabel(t)} <span class="team-count">${members.length}명</span></div>
+          <div class="slc-score">${names}</div>
         </div>
-        <span class="slc-badge ${done ? 'badge-done' : 'badge-pending'}">${done ? '완료' : '입력'}</span>
+        <span class="slc-badge ${allDone ? 'badge-done' : 'badge-pending'}">${doneCount}/${members.length}</span>
       </div>
     `;
   }).join('');
 
   container.querySelectorAll('.score-list-card').forEach(card => {
     card.onclick = () => {
-      currentScoreId = Number(card.dataset.scoreId);
-      currentParticipantName = card.dataset.pName;
-      showScreen('score-entry');
+      currentTeam = Number(card.dataset.team);
+      showScreen('team-entry');
     };
   });
 }
@@ -426,71 +478,50 @@ async function handleBatchOcr(input) {
 */
 
 // ────────────────────────────────
-// 화면 7: 일괄 OCR 입력
+// 화면 7: 조별 점수 입력 (일괄 그리드)
 // ────────────────────────────────
-screens['batch-ocr'] = async ({ players = [] } = {}) => {
+async function getTeamMembers() {
   const scores = await DB.score.getByTournament(currentTournamentId);
-  const allParticipants = await DB.participant.getAll();
-  const pMap = Object.fromEntries(allParticipants.map(p => [p.id, p]));
+  const parts = await DB.participant.getAll();
+  const pMap = Object.fromEntries(parts.map(p => [p.id, p]));
+  const members = scores.filter(s => (s.team ?? 0) === currentTeam);
+  members.sort((a, b) =>
+    (pMap[a.participantId]?.name || '').localeCompare(pMap[b.participantId]?.name || '', 'ko'));
+  return { members, pMap };
+}
+
+screens['team-entry'] = async () => {
   const courses = ['A', 'B', 'C', 'D'];
+  const { members, pMap } = await getTeamMembers();
+  document.getElementById('team-entry-title').textContent = `${teamLabel(currentTeam)} 점수 입력`;
 
-  // 참석자 (점수 레코드 보유자)
-  const attendees = scores.map(s => ({
-    scoreId: s.id,
-    name: pMap[s.participantId]?.name ?? '알 수 없음',
-    A: s.A, B: s.B, C: s.C, D: s.D
-  }));
-
-  const warnEl = document.getElementById('batch-warn');
-  const grid = document.getElementById('batch-grid');
-
-  if (attendees.length === 0) {
-    warnEl.className = 'warn-box';
-    warnEl.style.display = '';
-    warnEl.textContent = '참석자가 없습니다. 명단에서 먼저 체크해주세요.';
-    grid.innerHTML = '';
-    return;
-  }
-
-  // 매칭된 이름 → 타수
-  const byName = {};
-  for (const p of players) if (p.matched) byName[p.matched] = p;
-
-  // 각 참석자 프리필 (매칭되면 AI 값, 아니면 기존 값)
-  let matchedCount = 0;
-  const filled = attendees.map(att => {
-    const m = byName[att.name];
-    if (m) matchedCount++;
-    const vals = {};
-    for (const c of courses) {
-      vals[c] = m && m[c] != null ? m[c] : (att[c] != null ? att[c] : '');
-    }
-    return { ...att, vals, isMatched: !!m };
-  });
-
-  grid.innerHTML = filled.map(att => `
-    <div class="batch-row ${att.isMatched ? 'matched' : ''}" data-score-id="${att.scoreId}">
-      <div class="batch-name">${escHtml(att.name)}${att.isMatched ? ' <span class="batch-tag">AI 인식</span>' : ''}</div>
-      <div class="batch-scores">
-        ${courses.map(c => `
-          <div class="batch-cell">
-            <label class="batch-course-label">${c}</label>
-            <input class="batch-score-input" id="batch-${att.scoreId}-${c}" data-sid="${att.scoreId}"
-              type="number" inputmode="numeric" min="1" max="99"
-              value="${att.vals[c] !== '' ? att.vals[c] : ''}" placeholder="–">
-          </div>
-        `).join('')}
+  const grid = document.getElementById('team-grid');
+  grid.innerHTML = members.map(s => {
+    const p = pMap[s.participantId];
+    return `
+      <div class="batch-row" data-score-id="${s.id}">
+        <div class="batch-name">${escHtml(p?.name ?? '?')} ${genderBadge(p?.gender)}</div>
+        <div class="batch-scores">
+          ${courses.map(c => `
+            <div class="batch-cell">
+              <label class="batch-course-label">${c}</label>
+              <input class="batch-score-input score-adv" id="team-${s.id}-${c}" data-sid="${s.id}"
+                type="number" inputmode="numeric" min="1" max="99"
+                value="${s[c] !== null ? s[c] : ''}" placeholder="–">
+            </div>
+          `).join('')}
+        </div>
+        <div class="batch-total-col">
+          <span class="batch-total-label">합계</span>
+          <span class="batch-total-val" id="team-total-${s.id}">–</span>
+        </div>
       </div>
-      <div class="batch-total-col">
-        <span class="batch-total-label">합계</span>
-        <span class="batch-total-val" id="batch-total-${att.scoreId}">–</span>
-      </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 
   const updateRowTotal = sid => {
-    const vals = courses.map(c => parseInt(document.getElementById(`batch-${sid}-${c}`).value, 10));
-    const el = document.getElementById(`batch-total-${sid}`);
+    const vals = courses.map(c => parseInt(document.getElementById(`team-${sid}-${c}`).value, 10));
+    const el = document.getElementById(`team-total-${sid}`);
     if (vals.every(x => !isNaN(x))) {
       const t = vals.reduce((a, b) => a + b, 0);
       const diff = t - 132;
@@ -502,44 +533,36 @@ screens['batch-ocr'] = async ({ players = [] } = {}) => {
       el.className = 'batch-total-val';
     }
   };
-  grid.querySelectorAll('.batch-score-input').forEach(inp => {
-    inp.oninput = () => updateRowTotal(inp.dataset.sid);
+
+  // 합계 갱신 + 2자리 입력 시 다음 칸 자동 이동
+  const inputs = [...grid.querySelectorAll('.score-adv')];
+  inputs.forEach((inp, idx) => {
+    inp.oninput = () => {
+      updateRowTotal(inp.dataset.sid);
+      if (inp.value.length >= 2 && idx < inputs.length - 1) inputs[idx + 1].focus();
+    };
     updateRowTotal(inp.dataset.sid);
   });
-
-  // 안내: 매칭 결과 + 매칭 실패한 인식 이름
-  const attendeeNameSet = new Set(attendees.map(a => a.name));
-  const unmatched = players.filter(p => !p.matched || !attendeeNameSet.has(p.matched));
-  const parts = [`참석자 ${attendees.length}명 중 ${matchedCount}명 자동 입력됨.`];
-  if (unmatched.length > 0) {
-    const raws = unmatched.map(p => p.raw || '?').filter(Boolean).join(', ');
-    parts.push(`매칭 실패: ${raws || unmatched.length + '명'} — 해당 칸은 직접 입력하세요.`);
-  }
-  parts.push('값을 확인 후 수정하고 "모두 저장"을 누르세요.');
-  warnEl.className = 'warn-box batch-info';
-  warnEl.style.display = '';
-  warnEl.innerHTML = parts.map(escHtml).join('<br>');
+  if (inputs.length) inputs[0].focus();
 };
 
-document.getElementById('btn-batch-back').onclick = () => showScreen('score-list');
+document.getElementById('btn-team-back').onclick = () => showScreen('score-list');
 
-document.getElementById('btn-batch-save').onclick = async () => {
-  const scores = await DB.score.getByTournament(currentTournamentId);
-  const courses = ['A','B','C','D'];
-  let savedCount = 0;
-  let missingCount = 0;
-
-  for (const s of scores) {
-    const vals = courses.map(c => parseInt(document.getElementById(`batch-${s.id}-${c}`)?.value, 10));
+document.getElementById('btn-team-save').onclick = async () => {
+  const courses = ['A', 'B', 'C', 'D'];
+  const { members } = await getTeamMembers();
+  let saved = 0, missing = 0;
+  for (const s of members) {
+    const vals = courses.map(c => parseInt(document.getElementById(`team-${s.id}-${c}`)?.value, 10));
     if (vals.every(x => !isNaN(x))) {
-      const [a,b,c,d] = vals;
-      await DB.score.update({ ...s, A:a, B:b, C:c, D:d, total: a+b+c+d });
-      savedCount++;
+      const [a, b, c, d] = vals;
+      await DB.score.update({ ...s, A: a, B: b, C: c, D: d, total: a + b + c + d });
+      saved++;
     } else {
-      missingCount++;
+      missing++;
     }
   }
-  toast(`${savedCount}명 저장 완료${missingCount > 0 ? ` (${missingCount}명 미완료)` : ''}`);
+  toast(`${saved}명 저장${missing > 0 ? ` · ${missing}명 미완료` : ''}`);
   showScreen('score-list');
 };
 
@@ -604,8 +627,9 @@ document.getElementById('btn-entry-back').onclick = () => showScreen('score-list
 // ────────────────────────────────
 // 화면 5: 순위 집계
 // ────────────────────────────────
-let rankingTab = '전체';    // '전체' | '남' | '여'
+let rankingTab = '전체';    // '전체' | '남' | '여' | '팀'
 let _lastRanked = [];
+let _teamRanked = [];
 
 screens.ranking = async () => {
   const tournament = await DB.tournament.get(currentTournamentId);
@@ -643,6 +667,26 @@ screens.ranking = async () => {
     ranked.push({ ...e, rank: sameTie ? ranked[i - 1].rank : i + 1, tied: sameTie });
   }
 
+  // 팀(조) 합산 순위 — 조원 전원 완료된 조만 집계 (미배정 제외)
+  const teamAttend = {};
+  for (const s of scores) { const t = s.team ?? 0; if (t !== 0) teamAttend[t] = (teamAttend[t] || 0) + 1; }
+  const teamAgg = {};
+  for (const s of complete) {
+    const t = s.team ?? 0;
+    if (t === 0) continue;
+    const g = teamAgg[t] = teamAgg[t] || { team: t, total: 0, count: 0, members: [] };
+    g.total += s.A + s.B + s.C + s.D;
+    g.count++;
+    g.members.push(pMap[s.participantId]?.name ?? '?');
+  }
+  const teams = Object.values(teamAgg).filter(g => g.count === teamAttend[g.team]);
+  teams.sort((a, b) => a.total - b.total);
+  let trank = 1;
+  _teamRanked = teams.map((g, i, arr) => {
+    if (i > 0 && g.total !== arr[i - 1].total) trank = i + 1;
+    return { ...g, rank: trank, tied: i > 0 && arr[i - 1].total === g.total };
+  });
+
   // 전체 순위 계산 결과를 저장 → 탭 전환 시 재계산 없이 필터만
   _lastRanked = ranked;
   rankingTab = '전체';
@@ -651,8 +695,40 @@ screens.ranking = async () => {
   renderRankingList();
 };
 
+// 팀 합산 순위 렌더
+function renderTeamRanking() {
+  const container = document.getElementById('ranking-list');
+  if (_teamRanked.length === 0) {
+    container.innerHTML = '<p class="empty-msg">조원 전원 입력이 끝난 조가 없습니다.</p>';
+    return;
+  }
+  container.innerHTML = _teamRanked.map(g => {
+    const par = 132 * g.count;
+    const diff = g.total - par;
+    const diffStr = diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`;
+    const diffClass = diff <= 0 ? 'under' : 'over';
+    const medal = g.rank === 1 ? '🥇' : g.rank === 2 ? '🥈' : g.rank === 3 ? '🥉' : '';
+    const rankLabel = g.tied ? `${g.rank}위 (공동)` : `${g.rank}위`;
+    return `
+      <div class="rank-card rank-${Math.min(g.rank, 4)}">
+        <div class="rank-medal">${medal || g.rank}</div>
+        <div class="rank-info">
+          <div class="rank-name">${g.team}조 <span class="team-count">${g.count}명</span></div>
+          <div class="rank-courses">${g.members.map(escHtml).join(', ')}</div>
+          <div class="rank-label-text">${rankLabel} · 팀 PAR ${par}</div>
+        </div>
+        <div class="rank-total">
+          <span class="rank-total-num">${g.total}</span>
+          <span class="par-diff ${diffClass}">${diffStr}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 // 현재 탭 기준으로 순위 목록 렌더 (등수는 전체 기준 유지)
 function renderRankingList() {
+  if (rankingTab === '팀') { renderTeamRanking(); return; }
   const container = document.getElementById('ranking-list');
   const list = rankingTab === '전체'
     ? _lastRanked
@@ -705,6 +781,7 @@ async function getRankedEntries() {
   const entries = complete.map(s => ({
     name: pMap[s.participantId]?.name ?? '알 수 없음',
     gender: pMap[s.participantId]?.gender || '미지정',
+    team: (s.team ?? 0) === 0 ? '미배정' : `${s.team}조`,
     total: s.A + s.B + s.C + s.D, A: s.A, B: s.B, C: s.C, D: s.D
   }));
   entries.sort((a, b) => {
@@ -729,8 +806,8 @@ document.getElementById('btn-export-csv').onclick = async () => {
   const ranked = await getRankedEntries();
   if (ranked.length === 0) { toast('집계된 점수가 없습니다'); return; }
   const BOM = '﻿';
-  const header = ['순위','이름','성별','합계','A코스','B코스','C코스','D코스'];
-  const rows = ranked.map(e => [e.rank, e.name, e.gender, e.total, e.A, e.B, e.C, e.D]);
+  const header = ['순위','이름','성별','조','합계','A코스','B코스','C코스','D코스'];
+  const rows = ranked.map(e => [e.rank, e.name, e.gender, e.team, e.total, e.A, e.B, e.C, e.D]);
   const csv = BOM + [header, ...rows].map(r => r.join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -749,7 +826,7 @@ document.getElementById('btn-share').onclick = async () => {
     ...ranked.map(e => {
       const diff = e.total - 132;
       const diffStr = diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`;
-      return `${e.rank}위 ${e.name}(${e.gender})  ${e.total}타 (${diffStr})  A${e.A}·B${e.B}·C${e.C}·D${e.D}`;
+      return `${e.rank}위 ${e.name}(${e.gender}/${e.team})  ${e.total}타 (${diffStr})  A${e.A}·B${e.B}·C${e.C}·D${e.D}`;
     })
   ];
   const text = lines.join('\n');

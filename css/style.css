@@ -697,3 +697,33 @@ body {
   color: var(--green-dark);
   box-shadow: 0 1px 4px rgba(0,0,0,0.12);
 }
+
+/* ── 명단 NO. / 조 선택 ── */
+.p-no {
+  flex-shrink: 0;
+  min-width: 22px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-sub);
+}
+.team-select {
+  flex-shrink: 0;
+  padding: 6px 8px;
+  border: 1.5px solid var(--gray);
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--green-dark);
+  font-size: 0.85rem;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.participant-row { gap: 8px; }
+.attend-label { min-width: 0; }
+.p-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── 조원 수 뱃지 ── */
+.team-count {
+  font-size: 0.78rem;
+  color: var(--text-sub);
+  margin-left: 4px;
+}
