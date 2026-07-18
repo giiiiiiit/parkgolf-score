@@ -199,10 +199,18 @@ screens.home = async () => {
 
 document.getElementById('btn-new-tournament').onclick = () => showScreen('new-tournament');
 
-screens['new-tournament'] = () => {
+screens['new-tournament'] = async () => {
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('input-tournament-date').value = today;
   document.getElementById('input-tournament-name').value = '';
+
+  // 기존 대회 명단 불러오기 목록 채우기
+  const sel = document.getElementById('import-roster');
+  const tournaments = await DB.tournament.getAll();
+  tournaments.sort((a, b) => b.date.localeCompare(a.date));
+  sel.innerHTML = '<option value="">불러오지 않음</option>' +
+    tournaments.map(t => `<option value="${t.id}">${escHtml(t.name)} (${formatDate(t.date)})</option>`).join('');
+
   document.getElementById('input-tournament-name').focus();
 };
 document.getElementById('form-new-tournament').onsubmit = async e => {
@@ -210,8 +218,23 @@ document.getElementById('form-new-tournament').onsubmit = async e => {
   const name = document.getElementById('input-tournament-name').value.trim();
   const date = document.getElementById('input-tournament-date').value;
   if (!name) return;
-  await DB.tournament.add({ name, date, par: 132 });
-  toast('대회를 만들었습니다');
+  const importId = Number(document.getElementById('import-roster').value) || null;
+
+  const tid = await DB.tournament.add({ name, date, par: 132 });
+
+  // 선택한 대회의 참석자·조 배정을 복사 (점수는 빈칸)
+  if (importId) {
+    const src = await DB.score.getByTournament(importId);
+    for (const s of src) {
+      await DB.score.add({
+        tournamentId: tid, participantId: s.participantId, team: s.team ?? 0,
+        A: null, B: null, C: null, D: null, total: null
+      });
+    }
+    toast(`대회 생성 · 명단 ${src.length}명 불러옴`);
+  } else {
+    toast('대회를 만들었습니다');
+  }
   showScreen('home');
 };
 document.getElementById('btn-cancel-tournament').onclick = () => showScreen('home');
@@ -227,7 +250,7 @@ screens.roster = async () => {
   await renderRoster();
 };
 
-const TEAM_MAX = 12;   // 조 선택 최대 개수
+const TEAM_MAX = 50;   // 조 선택 최대 개수 (최대 50조 / 약 200명)
 let lastTeam = 1;      // 직전 배정 조 (연속 체크 편의)
 
 async function renderRoster() {
@@ -252,16 +275,20 @@ async function renderRoster() {
         .map(n => `<option value="${n}" ${team === n ? 'selected' : ''}>${n}조</option>`).join('');
       return `
         <div class="participant-row" data-id="${p.id}">
-          <span class="p-no">${i + 1}</span>
-          <label class="attend-label">
-            <input type="checkbox" class="attend-check" data-id="${p.id}" ${attending ? 'checked' : ''}>
-            <span class="p-name">${escHtml(p.name)}</span>
-            ${genderBadge(p.gender)}
-          </label>
-          <select class="team-select" data-id="${p.id}" ${attending ? '' : 'style="display:none;"'}>${teamOpts}</select>
-          <div class="p-actions">
-            <button class="btn-icon btn-edit-p" data-id="${p.id}" title="이름·성별 수정">✏️</button>
-            <button class="btn-icon btn-del-p" data-id="${p.id}" title="삭제">🗑</button>
+          <div class="prow-top">
+            <span class="p-no">${i + 1}</span>
+            <label class="attend-label">
+              <input type="checkbox" class="attend-check" data-id="${p.id}" ${attending ? 'checked' : ''}>
+              <span class="p-name">${escHtml(p.name)}</span>
+              ${genderBadge(p.gender)}
+            </label>
+          </div>
+          <div class="prow-bottom">
+            <select class="team-select" data-id="${p.id}" ${attending ? '' : 'style="display:none;"'}>${teamOpts}</select>
+            <div class="p-actions">
+              <button class="btn-icon btn-edit-p" data-id="${p.id}" title="이름·성별 수정">✏️</button>
+              <button class="btn-icon btn-del-p" data-id="${p.id}" title="삭제">🗑</button>
+            </div>
           </div>
         </div>
       `;
@@ -677,7 +704,7 @@ screens.ranking = async () => {
     const g = teamAgg[t] = teamAgg[t] || { team: t, total: 0, count: 0, members: [] };
     g.total += s.A + s.B + s.C + s.D;
     g.count++;
-    g.members.push(pMap[s.participantId]?.name ?? '?');
+    g.members.push({ name: pMap[s.participantId]?.name ?? '?', gender: pMap[s.participantId]?.gender || '미지정' });
   }
   const teams = Object.values(teamAgg).filter(g => g.count === teamAttend[g.team]);
   teams.sort((a, b) => a.total - b.total);
@@ -714,7 +741,7 @@ function renderTeamRanking() {
         <div class="rank-medal">${medal || g.rank}</div>
         <div class="rank-info">
           <div class="rank-name">${g.team}조 <span class="team-count">${g.count}명</span></div>
-          <div class="rank-courses">${g.members.map(escHtml).join(', ')}</div>
+          <div class="rank-courses team-members">${g.members.map(m => `${escHtml(m.name)}${genderBadge(m.gender)}`).join(' · ')}</div>
           <div class="rank-label-text">${rankLabel} · 팀 PAR ${par}</div>
         </div>
         <div class="rank-total">
@@ -739,7 +766,8 @@ function renderRankingList() {
     return;
   }
 
-  container.innerHTML = list.map(e => {
+  const showOrder = rankingTab === '남' || rankingTab === '여';
+  container.innerHTML = list.map((e, i) => {
     const diff = e.total - 132;
     const diffStr = diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`;
     const diffClass = diff <= 0 ? 'under' : 'over';
@@ -747,6 +775,7 @@ function renderRankingList() {
     const rankLabel = e.tied ? `${e.rank}위 (공동)` : `${e.rank}위`;
     return `
       <div class="rank-card rank-${Math.min(e.rank, 4)}">
+        ${showOrder ? `<div class="rank-order">${i + 1}</div>` : ''}
         <div class="rank-medal">${medal || e.rank}</div>
         <div class="rank-info">
           <div class="rank-name">${escHtml(e.name)} ${genderBadge(e.gender)}</div>

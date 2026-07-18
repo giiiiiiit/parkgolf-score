@@ -727,3 +727,45 @@ body {
   color: var(--text-sub);
   margin-left: 4px;
 }
+
+/* ── 명단 2줄 카드형 (접근성 글씨 확대 대응) ── */
+.participant-list { gap: 8px; }
+.participant-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px;
+  margin-bottom: 0;
+  border-bottom: none;
+  background: var(--gray-light);
+  border-radius: 12px;
+}
+.prow-top { display: flex; align-items: center; gap: 10px; }
+.prow-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-left: 34px;
+}
+.p-name {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-all;
+  line-height: 1.3;
+}
+.attend-label { flex: 1; min-width: 0; }
+.team-select { min-width: 66px; }
+
+/* ── 남/여 순위표 순번 ── */
+.rank-order {
+  flex-shrink: 0;
+  min-width: 20px;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--text-sub);
+  margin-right: 2px;
+}
+.team-members { line-height: 1.6; }

@@ -50,6 +50,13 @@
             <label class="form-label">날짜</label>
             <input id="input-tournament-date" class="form-input" type="date" required>
           </div>
+          <div class="form-group">
+            <label class="form-label">명단 불러오기 (선택)</label>
+            <select id="import-roster" class="form-input">
+              <option value="">불러오지 않음</option>
+            </select>
+            <div class="form-hint" style="margin-top:6px;">기존 대회의 참석자·조 배정을 그대로 가져옵니다 (점수는 빈칸).</div>
+          </div>
           <div class="form-hint">PAR 합계: 132 (A·B·C·D 각 33)</div>
           <button type="submit" class="btn btn-primary btn-lg" style="margin-top:20px;">저장</button>
           <button type="button" id="btn-cancel-tournament" class="btn btn-secondary btn-lg">취소</button>
