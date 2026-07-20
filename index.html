@@ -85,14 +85,18 @@
       </div>
       <div class="card">
         <div class="card-title">참가자 추가</div>
-        <div class="gender-toggle" id="add-gender-toggle">
-          <button type="button" class="gender-opt active" data-g="남">남</button>
-          <button type="button" class="gender-opt" data-g="여">여</button>
+        <div class="add-controls">
+          <div class="gender-toggle" id="add-gender-toggle">
+            <button type="button" class="gender-opt active" data-g="남">남</button>
+            <button type="button" class="gender-opt" data-g="여">여</button>
+          </div>
+          <select id="add-team-select" class="team-select add-team-select"></select>
         </div>
         <form id="form-add-participant" class="add-form">
           <input id="input-participant-name" class="form-input" type="text" placeholder="이름 입력" maxlength="10" autocomplete="off">
           <button type="submit" class="btn btn-primary">추가</button>
         </form>
+        <div class="form-hint" style="margin-top:8px;">추가하면 선택한 조로 참석 체크됩니다.</div>
       </div>
     </div>
   </div>

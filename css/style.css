@@ -769,3 +769,13 @@ body {
   margin-right: 2px;
 }
 .team-members { line-height: 1.6; }
+
+/* ── 참가자 추가: 성별 + 조 선택 행 ── */
+.add-controls {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+  margin-bottom: 10px;
+}
+.add-controls .gender-toggle { flex: 1; margin-bottom: 0; }
+.add-team-select { flex-shrink: 0; min-width: 84px; text-align: center; }

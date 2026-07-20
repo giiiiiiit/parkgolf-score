@@ -247,11 +247,17 @@ screens.roster = async () => {
   document.getElementById('roster-title').textContent = tournament.name;
   document.getElementById('roster-date').textContent = formatDate(tournament.date);
   document.getElementById('input-participant-name').value = '';
+  document.getElementById('add-team-select').innerHTML = teamOptionsHtml(lastTeam);
   await renderRoster();
 };
 
 const TEAM_MAX = 50;   // 조 선택 최대 개수 (최대 50조 / 약 200명)
 let lastTeam = 1;      // 직전 배정 조 (연속 체크 편의)
+
+function teamOptionsHtml(selected) {
+  return Array.from({ length: TEAM_MAX }, (_, k) => k + 1)
+    .map(n => `<option value="${n}" ${selected === n ? 'selected' : ''}>${n}조</option>`).join('');
+}
 
 async function renderRoster() {
   let all = await DB.participant.getAll();
@@ -271,8 +277,7 @@ async function renderRoster() {
       const sc = scoreByPid[p.id];
       const attending = !!sc;
       const team = sc?.team ?? lastTeam;
-      const teamOpts = Array.from({ length: TEAM_MAX }, (_, k) => k + 1)
-        .map(n => `<option value="${n}" ${team === n ? 'selected' : ''}>${n}조</option>`).join('');
+      const teamOpts = teamOptionsHtml(team);
       return `
         <div class="participant-row" data-id="${p.id}">
           <div class="prow-top">
@@ -391,9 +396,13 @@ document.getElementById('form-add-participant').onsubmit = async e => {
   if (!name) return;
   const all = await DB.participant.getAll();
   if (all.some(p => p.name === name)) { await alertBox('이미 등록된 이름입니다.'); return; }
-  await DB.participant.add({ name, gender: addGender });
+  const team = Number(document.getElementById('add-team-select').value) || 1;
+  lastTeam = team;
+  const pid = await DB.participant.add({ name, gender: addGender });
+  // 추가 즉시 선택한 조로 참석 체크
+  await DB.score.add({ tournamentId: currentTournamentId, participantId: pid, team, A: null, B: null, C: null, D: null, total: null });
   document.getElementById('input-participant-name').value = '';
-  toast(`${name}(${addGender}) 추가됨`);
+  toast(`${name}(${addGender}·${team}조) 추가됨`);
   await renderRoster();
 };
 
