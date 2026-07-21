@@ -5,7 +5,27 @@
       "Bash(python3 -c ' *)",
       "Bash(pip install *)",
       "Bash(pip3 install *)",
-      "mcp__Claude_Preview__preview_start"
+      "mcp__Claude_Preview__preview_start",
+      "Bash(node -e \"require.resolve\\('playwright'\\); console.log\\('yes'\\)\")",
+      "Bash(node -e \"require.resolve\\('puppeteer'\\); console.log\\('yes'\\)\")",
+      "Bash(python3 -c \"import playwright; print\\('yes'\\)\")",
+      "Read(//Applications/Google Chrome.app/Contents/MacOS/**)",
+      "Bash(python3 -c \"import reportlab; print\\(reportlab.Version\\)\")",
+      "Bash(python3 -m pip --version)",
+      "Bash(python3 -c \"import PIL; print\\(PIL.__version__\\)\")",
+      "Read(//Applications/**)",
+      "Bash(mdfind -name \"Chromium.app\")",
+      "Bash(python3 -m pip install --quiet reportlab)",
+      "Bash(python3 -c \"import reportlab; print\\('reportlab', reportlab.Version\\)\")",
+      "Read(//private/tmp/claude-501/**)",
+      "Bash(find /private/tmp/claude-501 /tmp /var/folders -name \"*.png\" -newermt \"-3 minutes\" 2>/dev/null | head -20; echo \"---jpg---\"; find /private/tmp/claude-501 /tmp -name \"*.jp*g\" -newermt \"-3 minutes\" 2>/dev/null | head)",
+      "Bash(python3 shoot.py)",
+      "Bash(python3 build_pdf.py)",
+      "Bash(python3 -m pip install --quiet pymupdf)",
+      "Bash(python3 -)",
+      "Read(//Users/rani/Project/**)",
+      "Bash(rm -f scratchpad/pdfcheck/*.png)",
+      "Bash(cp \"/private/tmp/claude-501/-Users-rani-Project-parkgolf-score/5b1ecb3d-b9c0-46cf-b73c-7b6e02a36f6d/파크골프_스코어_집계_사용설명서.pdf\" \"/Users/rani/Project/parkgolf-score/파크골프_스코어_집계_사용설명서.pdf\" && ls -lh \"/Users/rani/Project/parkgolf-score/파크골프_스코어_집계_사용설명서.pdf\" && echo \"복사 완료\")"
     ]
   }
 }

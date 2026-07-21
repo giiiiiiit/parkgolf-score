@@ -222,16 +222,21 @@ document.getElementById('form-new-tournament').onsubmit = async e => {
 
   const tid = await DB.tournament.add({ name, date, par: 132 });
 
-  // 선택한 대회의 참석자·조 배정을 복사 (점수는 빈칸)
+  // 선택한 대회의 참가자 '이름만' 불러오기 (참석 체크 해제 · 조 빈칸 · 점수 빈칸)
   if (importId) {
     const src = await DB.score.getByTournament(importId);
+    const seen = new Set();
+    let n = 0;
     for (const s of src) {
+      if (seen.has(s.participantId)) continue;
+      seen.add(s.participantId);
       await DB.score.add({
-        tournamentId: tid, participantId: s.participantId, team: s.team ?? 0,
+        tournamentId: tid, participantId: s.participantId, attend: false, team: null,
         A: null, B: null, C: null, D: null, total: null
       });
+      n++;
     }
-    toast(`대회 생성 · 명단 ${src.length}명 불러옴`);
+    toast(`대회 생성 · 명단 ${n}명 불러옴 (참석·조는 직접 선택)`);
   } else {
     toast('대회를 만들었습니다');
   }
@@ -255,44 +260,51 @@ const TEAM_MAX = 50;   // 조 선택 최대 개수 (최대 50조 / 약 200명)
 let lastTeam = 1;      // 직전 배정 조 (연속 체크 편의)
 
 function teamOptionsHtml(selected) {
-  return Array.from({ length: TEAM_MAX }, (_, k) => k + 1)
+  const blank = `<option value="" ${selected == null ? 'selected' : ''}>조 선택</option>`;
+  return blank + Array.from({ length: TEAM_MAX }, (_, k) => k + 1)
     .map(n => `<option value="${n}" ${selected === n ? 'selected' : ''}>${n}조</option>`).join('');
 }
 
 async function renderRoster() {
-  let all = await DB.participant.getAll();
-  if (rosterSort === 'name') all = [...all].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  else all = [...all].sort((a, b) => a.id - b.id);
+  const parts = await DB.participant.getAll();
+  const pMap = Object.fromEntries(parts.map(p => [p.id, p]));
+  let scores = await DB.score.getByTournament(currentTournamentId);
 
-  const scores = await DB.score.getByTournament(currentTournamentId);
-  const scoreByPid = Object.fromEntries(scores.map(s => [s.participantId, s]));
+  // 유령 기록(삭제된 참가자를 가리키는 점수) 자동 정리
+  const orphans = scores.filter(s => !pMap[s.participantId]);
+  if (orphans.length) {
+    await Promise.all(orphans.map(o => DB.score.delete(o.id)));
+    scores = scores.filter(s => pMap[s.participantId]);
+  }
+
+  // 이 대회 명단 = 이 대회의 점수 레코드
+  let rows = scores.map(s => ({ s, p: pMap[s.participantId] }));
+  if (rosterSort === 'name') rows.sort((a, b) => a.p.name.localeCompare(b.p.name, 'ko'));
+  else rows.sort((a, b) => a.s.id - b.s.id);
+
   const list = document.getElementById('participant-list');
+  document.getElementById('roster-count-title').textContent = `참가자 명단 (총 ${rows.length}명)`;
 
-  document.getElementById('roster-count-title').textContent = `참가자 명단 (총 ${all.length}명)`;
-
-  if (all.length === 0) {
-    list.innerHTML = '<p class="empty-msg">참가자를 추가해주세요</p>';
+  if (rows.length === 0) {
+    list.innerHTML = '<p class="empty-msg">아직 참가자가 없습니다.<br>아래에서 추가하거나, 새 대회를 만들 때 명단을 불러오세요.</p>';
   } else {
-    list.innerHTML = all.map((p, i) => {
-      const sc = scoreByPid[p.id];
-      const attending = !!sc;
-      const team = sc?.team ?? lastTeam;
-      const teamOpts = teamOptionsHtml(team);
+    list.innerHTML = rows.map(({ s, p }, i) => {
+      const attending = s.attend !== false;
       return `
-        <div class="participant-row" data-id="${p.id}">
+        <div class="participant-row" data-sid="${s.id}">
           <div class="prow-top">
             <span class="p-no">${i + 1}</span>
             <label class="attend-label">
-              <input type="checkbox" class="attend-check" data-id="${p.id}" ${attending ? 'checked' : ''}>
+              <input type="checkbox" class="attend-check" data-sid="${s.id}" ${attending ? 'checked' : ''}>
               <span class="p-name">${escHtml(p.name)}</span>
               ${genderBadge(p.gender)}
             </label>
           </div>
           <div class="prow-bottom">
-            <select class="team-select" data-id="${p.id}" ${attending ? '' : 'style="display:none;"'}>${teamOpts}</select>
+            <select class="team-select" data-sid="${s.id}">${teamOptionsHtml(s.team ?? null)}</select>
             <div class="p-actions">
-              <button class="btn-icon btn-edit-p" data-id="${p.id}" title="이름·성별 수정">✏️</button>
-              <button class="btn-icon btn-del-p" data-id="${p.id}" title="삭제">🗑</button>
+              <button class="btn-icon btn-edit-p" data-pid="${p.id}" title="이름·성별 수정">✏️</button>
+              <button class="btn-icon btn-del-p" data-sid="${s.id}" data-name="${escHtml(p.name)}" title="명단에서 빼기">🗑</button>
             </div>
           </div>
         </div>
@@ -309,36 +321,20 @@ async function renderRoster() {
   }
   gotoBtn.onclick = () => showScreen('score-list');
   const updateGoto = () => {
-    const cnt = scores.length;
+    const cnt = scores.filter(s => s.attend !== false).length;
     gotoBtn.textContent = `점수 입력하기 (${cnt}명)`;
     gotoBtn.style.display = cnt > 0 ? '' : 'none';
   };
   updateGoto();
 
+  // 참석 체크 토글 (attend 플래그만 변경, 명단에서 제거 아님)
   list.querySelectorAll('.attend-check').forEach(cb => {
     cb.onchange = async () => {
-      const pid = Number(cb.dataset.id);
-      const sel = list.querySelector(`.team-select[data-id="${pid}"]`);
-      if (cb.checked) {
-        const existing = scores.find(s => s.participantId === pid);
-        if (!existing) {
-          const team = Number(sel?.value || lastTeam);
-          lastTeam = team;
-          const newScore = { tournamentId: currentTournamentId, participantId: pid, team, A: null, B: null, C: null, D: null, total: null };
-          const id = await DB.score.add(newScore);
-          scores.push({ ...newScore, id });
-        }
-        if (sel) sel.style.display = '';
-      } else {
-        const existing = scores.find(s => s.participantId === pid);
-        if (existing) {
-          const ok = await confirm('참석 취소 시 입력된 성적도 삭제됩니다.\n계속할까요?');
-          if (!ok) { cb.checked = true; return; }
-          await DB.score.delete(existing.id);
-          scores.splice(scores.indexOf(existing), 1);
-        }
-        if (sel) sel.style.display = 'none';
-      }
+      const sid = Number(cb.dataset.sid);
+      const s = scores.find(x => x.id === sid);
+      if (!s) return;
+      s.attend = cb.checked;
+      await DB.score.update(s);
       updateGoto();
     };
   });
@@ -346,20 +342,19 @@ async function renderRoster() {
   // 조 변경
   list.querySelectorAll('.team-select').forEach(sel => {
     sel.onchange = async () => {
-      const pid = Number(sel.dataset.id);
-      const existing = scores.find(s => s.participantId === pid);
-      if (existing) {
-        existing.team = Number(sel.value);
-        lastTeam = existing.team;
-        await DB.score.update(existing);
-      }
+      const sid = Number(sel.dataset.sid);
+      const s = scores.find(x => x.id === sid);
+      if (!s) return;
+      s.team = sel.value === '' ? null : Number(sel.value);
+      if (s.team != null) lastTeam = s.team;
+      await DB.score.update(s);
     };
   });
 
-  // ✏️ 이름·성별 수정
+  // ✏️ 이름·성별 수정 (전역 참가자 정보)
   list.querySelectorAll('.btn-edit-p').forEach(btn => {
     btn.onclick = async () => {
-      const pid = Number(btn.dataset.id);
+      const pid = Number(btn.dataset.pid);
       const p = await DB.participant.get(pid);
       const res = await promptEditParticipant(p.name, p.gender || '미지정');
       if (!res) return;
@@ -373,18 +368,16 @@ async function renderRoster() {
     };
   });
 
-  // 🗑 참가자 삭제 → 해당 대회 점수도 같이 삭제
+  // 🗑 명단에서 빼기 (이 대회 기록만 삭제, 다른 대회엔 영향 없음)
   list.querySelectorAll('.btn-del-p').forEach(btn => {
     btn.onclick = async () => {
-      const ok = await confirm('참가자를 명단에서 삭제할까요?\n이 대회의 점수도 삭제됩니다.');
+      const sid = Number(btn.dataset.sid);
+      const ok = await confirm(`${btn.dataset.name} 님을 이 대회 명단에서 뺄까요?\n입력한 점수도 함께 삭제됩니다. (다른 대회에는 영향 없음)`);
       if (!ok) return;
-      const pid = Number(btn.dataset.id);
-      // 현재 대회의 점수 삭제
-      const existingScore = scores.find(s => s.participantId === pid);
-      if (existingScore) await DB.score.delete(existingScore.id);
-      // 참가자 삭제
-      await DB.participant.delete(pid);
-      toast('삭제했습니다');
+      await DB.score.delete(sid);
+      const idx = scores.findIndex(x => x.id === sid);
+      if (idx >= 0) scores.splice(idx, 1);
+      toast('명단에서 뺐습니다');
       await renderRoster();
     };
   });
@@ -394,15 +387,20 @@ document.getElementById('form-add-participant').onsubmit = async e => {
   e.preventDefault();
   const name = document.getElementById('input-participant-name').value.trim();
   if (!name) return;
+  const team = Number(document.getElementById('add-team-select').value) || null;
+
   const all = await DB.participant.getAll();
-  if (all.some(p => p.name === name)) { await alertBox('이미 등록된 이름입니다.'); return; }
-  const team = Number(document.getElementById('add-team-select').value) || 1;
-  lastTeam = team;
-  const pid = await DB.participant.add({ name, gender: addGender });
-  // 추가 즉시 선택한 조로 참석 체크
-  await DB.score.add({ tournamentId: currentTournamentId, participantId: pid, team, A: null, B: null, C: null, D: null, total: null });
+  const existingP = all.find(p => p.name === name);
+  const scores = await DB.score.getByTournament(currentTournamentId);
+  if (existingP && scores.some(s => s.participantId === existingP.id)) {
+    await alertBox('이미 이 대회 명단에 있습니다.'); return;
+  }
+  // 기존 등록자면 재사용, 아니면 새로 등록
+  const pid = existingP ? existingP.id : await DB.participant.add({ name, gender: addGender });
+  if (team != null) lastTeam = team;
+  await DB.score.add({ tournamentId: currentTournamentId, participantId: pid, attend: true, team, A: null, B: null, C: null, D: null, total: null });
   document.getElementById('input-participant-name').value = '';
-  toast(`${name}(${addGender}·${team}조) 추가됨`);
+  toast(`${name} 추가됨${team != null ? ` (${team}조)` : ''}`);
   await renderRoster();
 };
 
@@ -421,13 +419,14 @@ screens['score-list'] = async () => {
 function teamLabel(t) { return t === 0 ? '미배정' : `${t}조`; }
 
 async function renderScoreList() {
-  const scores = await DB.score.getByTournament(currentTournamentId);
+  const all = await DB.score.getByTournament(currentTournamentId);
+  const scores = all.filter(s => s.attend !== false);   // 참석자만
   const allParticipants = await DB.participant.getAll();
   const pMap = Object.fromEntries(allParticipants.map(p => [p.id, p]));
   const container = document.getElementById('score-list-items');
 
   if (scores.length === 0) {
-    container.innerHTML = '<p class="empty-msg">참석자가 없습니다.<br>명단 화면에서 체크해주세요.</p>';
+    container.innerHTML = '<p class="empty-msg">참석자가 없습니다.<br>명단 화면에서 참석할 사람을 체크해주세요.</p>';
     return;
   }
 
@@ -520,7 +519,7 @@ async function getTeamMembers() {
   const scores = await DB.score.getByTournament(currentTournamentId);
   const parts = await DB.participant.getAll();
   const pMap = Object.fromEntries(parts.map(p => [p.id, p]));
-  const members = scores.filter(s => (s.team ?? 0) === currentTeam);
+  const members = scores.filter(s => s.attend !== false && (s.team ?? 0) === currentTeam);
   members.sort((a, b) =>
     (pMap[a.participantId]?.name || '').localeCompare(pMap[b.participantId]?.name || '', 'ko'));
   return { members, pMap };
@@ -672,7 +671,7 @@ screens.ranking = async () => {
   document.getElementById('ranking-title').textContent = tournament.name;
   document.getElementById('ranking-date').textContent = formatDate(tournament.date);
 
-  const scores = await DB.score.getByTournament(currentTournamentId);
+  const scores = (await DB.score.getByTournament(currentTournamentId)).filter(s => s.attend !== false);
   const allParticipants = await DB.participant.getAll();
   const pMap = Object.fromEntries(allParticipants.map(p => [p.id, p]));
 
@@ -812,7 +811,7 @@ document.getElementById('btn-ranking-back').onclick = () => showScreen('score-li
 
 // ── 내보내기 공통 ──
 async function getRankedEntries() {
-  const scores = await DB.score.getByTournament(currentTournamentId);
+  const scores = (await DB.score.getByTournament(currentTournamentId)).filter(s => s.attend !== false);
   const allParticipants = await DB.participant.getAll();
   const pMap = Object.fromEntries(allParticipants.map(p => [p.id, p]));
   const complete = scores.filter(s => s.A !== null && s.B !== null && s.C !== null && s.D !== null);
@@ -895,4 +894,16 @@ function formatDate(dateStr) {
   return `${y}년 ${m}월 ${d}일`;
 }
 
+// 유령 기록(삭제된 참가자를 가리키는 점수) 전 대회 일괄 정리 — '?' 표시 방지
+async function cleanupOrphanScores() {
+  try {
+    const parts = await DB.participant.getAll();
+    const ids = new Set(parts.map(p => p.id));
+    const all = await DB.score.getAll();
+    const orphans = all.filter(s => !ids.has(s.participantId));
+    if (orphans.length) await Promise.all(orphans.map(o => DB.score.delete(o.id)));
+  } catch {}
+}
+
+cleanupOrphanScores();
 showScreen('home');

@@ -44,7 +44,7 @@
         <form id="form-new-tournament">
           <div class="form-group">
             <label class="form-label">대회 이름</label>
-            <input id="input-tournament-name" class="form-input" type="text" placeholder="예) 6월 정기대회" maxlength="30" required>
+            <input id="input-tournament-name" class="form-input" type="text" placeholder="예) 6월 정기대회" maxlength="30" required autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
           </div>
           <div class="form-group">
             <label class="form-label">날짜</label>
@@ -80,7 +80,7 @@
           <span class="card-title" id="roster-count-title">참가자 명단</span>
           <button id="btn-sort-roster" class="btn-sort" type="button">가나다순 ↓</button>
         </div>
-        <div class="attend-hint">체크 = 참석 &nbsp;|&nbsp; 체크 시 조 선택 &nbsp;|&nbsp; ✏️ = 이름·성별 수정</div>
+        <div class="attend-hint">체크 = 참석 &nbsp;|&nbsp; 조를 선택하세요 &nbsp;|&nbsp; ✏️ 이름·성별 수정 &nbsp;|&nbsp; 🗑 명단에서 빼기</div>
         <div id="participant-list" class="participant-list"></div>
       </div>
       <div class="card">
@@ -93,7 +93,7 @@
           <select id="add-team-select" class="team-select add-team-select"></select>
         </div>
         <form id="form-add-participant" class="add-form">
-          <input id="input-participant-name" class="form-input" type="text" placeholder="이름 입력" maxlength="10" autocomplete="off">
+          <input id="input-participant-name" class="form-input" type="text" placeholder="이름 입력" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
           <button type="submit" class="btn btn-primary">추가</button>
         </form>
         <div class="form-hint" style="margin-top:8px;">추가하면 선택한 조로 참석 체크됩니다.</div>
