@@ -779,3 +779,7 @@ body {
 }
 .add-controls .gender-toggle { flex: 1; margin-bottom: 0; }
 .add-team-select { flex-shrink: 0; min-width: 84px; text-align: center; }
+
+/* ── 명단 전체 선택/해제 도구 ── */
+.roster-tools { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+.roster-tools .btn-sort:disabled { opacity: 0.5; }

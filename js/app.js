@@ -327,6 +327,19 @@ async function renderRoster() {
   };
   updateGoto();
 
+  // 전체 선택 / 해제
+  const toggleAllBtn = document.getElementById('btn-toggle-all');
+  if (toggleAllBtn) {
+    const allOn = scores.length > 0 && scores.every(s => s.attend !== false);
+    toggleAllBtn.textContent = allOn ? '전체 해제' : '전체 선택';
+    toggleAllBtn.disabled = scores.length === 0;
+    toggleAllBtn.onclick = async () => {
+      const target = !scores.every(s => s.attend !== false); // 하나라도 꺼져 있으면 전체 켬
+      await Promise.all(scores.map(s => { s.attend = target; return DB.score.update(s); }));
+      await renderRoster();
+    };
+  }
+
   // 참석 체크 토글 (attend 플래그만 변경, 명단에서 제거 아님)
   list.querySelectorAll('.attend-check').forEach(cb => {
     cb.onchange = async () => {
