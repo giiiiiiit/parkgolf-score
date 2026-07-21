@@ -1,6 +1,7 @@
 'use strict';
 import { DB } from './db.js';
 import { analyzeCard, getApiKey, setApiKey, hasApiKey } from './gemini.js';
+import { getRoom, setRoom, subscribeRoom, unsubscribeRoom, migrateLegacyIfNeeded } from './firebase.js';
 
 // ── Service Worker ──
 if ('serviceWorker' in navigator) {
@@ -16,12 +17,51 @@ let currentScoreId = null;
 let currentParticipantName = '';
 let currentTeam = null;          // 현재 입력 중인 조 번호 (0 = 미배정)
 
+let currentScreenName = 'home';
 function showScreen(name, data = {}) {
+  currentScreenName = name;
   document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
   const el = document.getElementById('screen-' + name);
   if (el) el.classList.add('active');
   if (screens[name]) screens[name](data);
 }
+
+// 다른 기기에서 변경이 오면 현재 화면만 다시 그림 (입력 중인 화면은 건드리지 않음)
+function refreshCurrentScreen() {
+  const refreshers = {
+    'home': () => screens.home(),
+    'roster': () => renderRoster(),
+    'score-list': () => renderScoreList(),
+    'ranking': () => screens.ranking(),
+  };
+  const fn = refreshers[currentScreenName];
+  if (fn) { try { fn(); } catch {} }
+}
+
+// ── 기기 연동(동기화) 모달 ──
+document.getElementById('btn-sync').onclick = () => {
+  document.getElementById('sync-code').textContent = getRoom();
+  document.getElementById('input-sync-code').value = '';
+  document.getElementById('modal-sync').classList.add('show');
+};
+document.getElementById('btn-close-sync').onclick = () =>
+  document.getElementById('modal-sync').classList.remove('show');
+document.getElementById('btn-copy-code').onclick = async () => {
+  try { await navigator.clipboard.writeText(getRoom()); toast('연결 코드를 복사했어요'); }
+  catch { toast('복사 실패 — 코드를 직접 적어주세요'); }
+};
+document.getElementById('btn-join-sync').onclick = async () => {
+  const code = document.getElementById('input-sync-code').value.trim();
+  if (!code) return;
+  const ok = await confirm(`'${code}' 코드의 데이터로 연결할까요?\n이 기기 화면이 그 데이터로 바뀝니다.`);
+  if (!ok) return;
+  const clean = setRoom(code);
+  unsubscribeRoom();
+  subscribeRoom(refreshCurrentScreen);
+  document.getElementById('modal-sync').classList.remove('show');
+  toast(`${clean} 에 연결되었습니다`);
+  showScreen('home');
+};
 
 // ── 토스트 ──
 function toast(msg) {
@@ -269,13 +309,8 @@ async function renderRoster() {
   const parts = await DB.participant.getAll();
   const pMap = Object.fromEntries(parts.map(p => [p.id, p]));
   let scores = await DB.score.getByTournament(currentTournamentId);
-
-  // 유령 기록(삭제된 참가자를 가리키는 점수) 자동 정리
-  const orphans = scores.filter(s => !pMap[s.participantId]);
-  if (orphans.length) {
-    await Promise.all(orphans.map(o => DB.score.delete(o.id)));
-    scores = scores.filter(s => pMap[s.participantId]);
-  }
+  // 참가자 정보가 없는 기록(동기화 지연/삭제)은 화면에서만 제외 — 절대 삭제하지 않음(동기화 경합 방지)
+  scores = scores.filter(s => pMap[s.participantId]);
 
   // 이 대회 명단 = 이 대회의 점수 레코드
   let rows = scores.map(s => ({ s, p: pMap[s.participantId] }));
@@ -433,9 +468,9 @@ function teamLabel(t) { return t === 0 ? '미배정' : `${t}조`; }
 
 async function renderScoreList() {
   const all = await DB.score.getByTournament(currentTournamentId);
-  const scores = all.filter(s => s.attend !== false);   // 참석자만
   const allParticipants = await DB.participant.getAll();
   const pMap = Object.fromEntries(allParticipants.map(p => [p.id, p]));
+  const scores = all.filter(s => s.attend !== false && pMap[s.participantId]);   // 참석자·정상 기록만
   const container = document.getElementById('score-list-items');
 
   if (scores.length === 0) {
@@ -685,9 +720,10 @@ screens.ranking = async () => {
   document.getElementById('ranking-title').textContent = tournament.name;
   document.getElementById('ranking-date').textContent = formatDate(tournament.date);
 
-  const scores = (await DB.score.getByTournament(currentTournamentId)).filter(s => s.attend !== false);
+  const rawScores = await DB.score.getByTournament(currentTournamentId);
   const allParticipants = await DB.participant.getAll();
   const pMap = Object.fromEntries(allParticipants.map(p => [p.id, p]));
+  const scores = rawScores.filter(s => s.attend !== false && pMap[s.participantId]);
 
   const complete = scores.filter(s => s.A !== null && s.B !== null && s.C !== null && s.D !== null);
   const incomplete = scores.length - complete.length;
@@ -825,9 +861,10 @@ document.getElementById('btn-ranking-back').onclick = () => showScreen('score-li
 
 // ── 내보내기 공통 ──
 async function getRankedEntries() {
-  const scores = (await DB.score.getByTournament(currentTournamentId)).filter(s => s.attend !== false);
+  const rawScores = await DB.score.getByTournament(currentTournamentId);
   const allParticipants = await DB.participant.getAll();
   const pMap = Object.fromEntries(allParticipants.map(p => [p.id, p]));
+  const scores = rawScores.filter(s => s.attend !== false && pMap[s.participantId]);
   const complete = scores.filter(s => s.A !== null && s.B !== null && s.C !== null && s.D !== null);
   const entries = complete.map(s => ({
     name: pMap[s.participantId]?.name ?? '알 수 없음',
@@ -908,16 +945,10 @@ function formatDate(dateStr) {
   return `${y}년 ${m}월 ${d}일`;
 }
 
-// 유령 기록(삭제된 참가자를 가리키는 점수) 전 대회 일괄 정리 — '?' 표시 방지
-async function cleanupOrphanScores() {
-  try {
-    const parts = await DB.participant.getAll();
-    const ids = new Set(parts.map(p => p.id));
-    const all = await DB.score.getAll();
-    const orphans = all.filter(s => !ids.has(s.participantId));
-    if (orphans.length) await Promise.all(orphans.map(o => DB.score.delete(o.id)));
-  } catch {}
-}
-
-cleanupOrphanScores();
-showScreen('home');
+// ── 시작: 로컬 데이터 이관 → 실시간 구독 → 홈 ──
+// (유령 기록은 삭제하지 않고 각 화면에서 표시만 제외 — 동기화 경합으로 인한 데이터 손실 방지)
+(async () => {
+  try { await migrateLegacyIfNeeded(); } catch (e) { console.warn('migrate', e); }
+  subscribeRoom(refreshCurrentScreen);
+  showScreen('home');
+})();

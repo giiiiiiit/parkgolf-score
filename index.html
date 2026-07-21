@@ -33,6 +33,7 @@
       <div class="section-header"><span class="section-title">대회 목록</span></div>
       <div id="tournament-list" class="card-list"></div>
       <button id="btn-new-tournament" class="btn btn-primary btn-lg">+ 새 대회 만들기</button>
+      <button id="btn-sync" class="btn btn-secondary btn-lg">🔗 다른 기기와 연동</button>
     </div>
   </div>
 
@@ -246,6 +247,27 @@
         <button id="modal-settings-cancel" class="btn btn-secondary">닫기</button>
       </div>
       <button id="modal-settings-clear" class="btn-link-danger">저장된 키 삭제</button>
+    </div>
+  </div>
+
+  <!-- ── 기기 연동(동기화) 모달 ── -->
+  <div id="modal-sync" class="modal-overlay">
+    <div class="modal-box">
+      <p style="font-weight:700; margin-bottom:10px;">🔗 기기 연동</p>
+      <p style="font-size:0.85rem; color:var(--text-sub); line-height:1.6; margin-bottom:10px;">
+        이 기기의 <b>연결 코드</b>입니다. 다른 기기(폰·노트북)에서 이 코드를 입력하면 같은 명단·점수를 함께 보고 실시간으로 동기화됩니다.
+      </p>
+      <div class="sync-code" id="sync-code">pg-----</div>
+      <button id="btn-copy-code" class="btn btn-secondary" style="width:100%; margin-top:8px;">코드 복사</button>
+      <hr style="margin:16px 0; border:none; border-top:1px solid var(--gray);">
+      <p style="font-size:0.85rem; color:var(--text-sub); line-height:1.6; margin-bottom:8px;">
+        다른 기기의 코드를 입력해 연결:
+      </p>
+      <input id="input-sync-code" class="form-input" type="text" placeholder="예) pg-A1B2" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">
+      <div class="modal-actions" style="margin-top:12px;">
+        <button id="btn-join-sync" class="btn btn-primary">연결</button>
+        <button id="btn-close-sync" class="btn btn-secondary">닫기</button>
+      </div>
     </div>
   </div>
 

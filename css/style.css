@@ -783,3 +783,16 @@ body {
 /* ── 명단 전체 선택/해제 도구 ── */
 .roster-tools { display: flex; justify-content: flex-end; margin-bottom: 10px; }
 .roster-tools .btn-sort:disabled { opacity: 0.5; }
+
+/* ── 연결 코드 ── */
+.sync-code {
+  text-align: center;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--green-dark);
+  background: var(--gray-light);
+  border: 2px dashed var(--green);
+  border-radius: 12px;
+  padding: 14px;
+}

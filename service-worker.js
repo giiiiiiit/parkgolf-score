@@ -1,10 +1,11 @@
-const CACHE_NAME = 'parkgolf-v12';
+const CACHE_NAME = 'parkgolf-v14';
 const ASSETS = [
   './',
   './index.html',
   './css/style.css',
   './js/app.js',
   './js/db.js',
+  './js/firebase.js',
   './js/gemini.js',
   './manifest.json',
   './icons/icon-192.png',
@@ -28,9 +29,12 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
-// 캐시 우선, 없으면 네트워크 fetch 후 캐싱 (Tesseract 리소스 포함)
+// 캐시 우선, 없으면 네트워크 fetch 후 캐싱
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
+  // Firebase 실시간 트래픽(Firestore 등)은 캐시하지 않고 네트워크로 통과
+  const url = new URL(event.request.url);
+  if (url.hostname.endsWith('googleapis.com') || url.hostname.endsWith('firebaseio.com')) return;
   event.respondWith(
     caches.open(CACHE_NAME).then(cache =>
       cache.match(event.request).then(cached => {

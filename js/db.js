@@ -1,76 +1,60 @@
 'use strict';
+// Firestore 기반 저장소 — 기존 IndexedDB와 동일한 DB.* API 유지
+import { col, ref } from './firebase.js';
+import {
+  getDoc, getDocs, setDoc, deleteDoc, query, where
+} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const DB_NAME = 'parkgolf';
-const DB_VERSION = 1;
-
-let _db = null;
-
-function openDB() {
-  if (_db) return Promise.resolve(_db);
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = e => {
-      const db = e.target.result;
-      // 대회
-      if (!db.objectStoreNames.contains('tournaments')) {
-        const ts = db.createObjectStore('tournaments', { keyPath: 'id', autoIncrement: true });
-        ts.createIndex('date', 'date');
-      }
-      // 참가자
-      if (!db.objectStoreNames.contains('participants')) {
-        const ps = db.createObjectStore('participants', { keyPath: 'id', autoIncrement: true });
-        ps.createIndex('name', 'name');
-      }
-      // 성적
-      if (!db.objectStoreNames.contains('scores')) {
-        const ss = db.createObjectStore('scores', { keyPath: 'id', autoIncrement: true });
-        ss.createIndex('tournamentId', 'tournamentId');
-        ss.createIndex('participantId', 'participantId');
-      }
-    };
-    req.onsuccess = e => { _db = e.target.result; resolve(_db); };
-    req.onerror = () => reject(req.error);
-  });
+// 숫자 ID 생성 (기존 앱이 숫자 id를 기대함, 기기 간 충돌 사실상 없음)
+function genId() {
+  return Date.now() * 1000 + Math.floor(Math.random() * 1000);
 }
 
-function tx(storeName, mode, fn) {
-  return openDB().then(db => new Promise((resolve, reject) => {
-    const t = db.transaction(storeName, mode);
-    const store = t.objectStore(storeName);
-    const req = fn(store);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  }));
+async function addItem(name, data) {
+  const id = genId();
+  await setDoc(ref(name, id), { ...data, id });
+  return id;
+}
+async function getItem(name, id) {
+  const s = await getDoc(ref(name, id));
+  return s.exists() ? s.data() : undefined;
+}
+async function getAllItems(name) {
+  const s = await getDocs(col(name));
+  return s.docs.map(d => d.data());
+}
+async function updateItem(name, data) {
+  await setDoc(ref(name, data.id), data);   // 전체 문서 교체
+}
+async function deleteItem(name, id) {
+  await deleteDoc(ref(name, id));
+}
+async function scoresByTournament(tournamentId) {
+  const s = await getDocs(query(col('scores'), where('tournamentId', '==', tournamentId)));
+  return s.docs.map(d => d.data());
 }
 
-// ── 대회 ──
 export const DB = {
   tournament: {
-    add: data => tx('tournaments', 'readwrite', s => s.add({ ...data, createdAt: Date.now() })),
-    getAll: () => tx('tournaments', 'readonly', s => s.getAll()),
-    get: id => tx('tournaments', 'readonly', s => s.get(id)),
-    update: data => tx('tournaments', 'readwrite', s => s.put(data)),
-    delete: id => tx('tournaments', 'readwrite', s => s.delete(id)),
+    add: d => addItem('tournaments', d),
+    getAll: () => getAllItems('tournaments'),
+    get: id => getItem('tournaments', id),
+    update: d => updateItem('tournaments', d),
+    delete: id => deleteItem('tournaments', id),
   },
   participant: {
-    add: data => tx('participants', 'readwrite', s => s.add({ ...data })),
-    getAll: () => tx('participants', 'readonly', s => s.getAll()),
-    get: id => tx('participants', 'readonly', s => s.get(id)),
-    update: data => tx('participants', 'readwrite', s => s.put(data)),
-    delete: id => tx('participants', 'readwrite', s => s.delete(id)),
+    add: d => addItem('participants', d),
+    getAll: () => getAllItems('participants'),
+    get: id => getItem('participants', id),
+    update: d => updateItem('participants', d),
+    delete: id => deleteItem('participants', id),
   },
   score: {
-    add: data => tx('scores', 'readwrite', s => s.add(data)),
-    get: id => tx('scores', 'readonly', s => s.get(id)),
-    getAll: () => tx('scores', 'readonly', s => s.getAll()),
-    getByTournament: tournamentId => openDB().then(db => new Promise((resolve, reject) => {
-      const t = db.transaction('scores', 'readonly');
-      const idx = t.objectStore('scores').index('tournamentId');
-      const req = idx.getAll(tournamentId);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    })),
-    update: data => tx('scores', 'readwrite', s => s.put(data)),
-    delete: id => tx('scores', 'readwrite', s => s.delete(id)),
+    add: d => addItem('scores', d),
+    get: id => getItem('scores', id),
+    getAll: () => getAllItems('scores'),
+    getByTournament: scoresByTournament,
+    update: d => updateItem('scores', d),
+    delete: id => deleteItem('scores', id),
   }
 };
