@@ -586,6 +586,7 @@ screens['team-entry'] = async () => {
   const inputs = [...grid.querySelectorAll('.score-adv')];
   inputs.forEach((inp, idx) => {
     inp.oninput = () => {
+      if (inp.value.length > 2) inp.value = inp.value.slice(0, 2);   // 2자리 초과 입력 차단
       updateRowTotal(inp.dataset.sid);
       if (inp.value.length >= 2 && idx < inputs.length - 1) inputs[idx + 1].focus();
     };
